@@ -1,0 +1,15 @@
+.env
+.env.*
+node_modules/
+dist/
+build/
+bin/
+coverage/
+.tmp/
+*.log
+__pycache__/
+.pytest_cache/
+.venv/
+api
+cli
+data/
