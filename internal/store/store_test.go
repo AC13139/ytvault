@@ -82,3 +82,57 @@ func TestRunTaskTransitionsQueuedToSucceeded(t *testing.T) {
 		t.Fatalf("persisted status = %q", tasks[0].Status)
 	}
 }
+
+func TestRunTaskRejectsNonQueuedTerminalTasks(t *testing.T) {
+	tmp := t.TempDir()
+	s, err := New(filepath.Join(tmp, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := yt.NormalizeSource("https://www.youtube.com/watch?v=abc123", models.SourceKindVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("succeeded task cannot run again", func(t *testing.T) {
+		_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.RunTask(task.ID); err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.RunTask(task.ID)
+		if err == nil {
+			t.Fatal("expected rerun to fail")
+		}
+		notRunnable, ok := err.(*TaskNotRunnableError)
+		if !ok {
+			t.Fatalf("expected TaskNotRunnableError, got %T", err)
+		}
+		if notRunnable.Status != models.TaskStatusSucceeded {
+			t.Fatalf("status = %q", notRunnable.Status)
+		}
+	})
+
+	t.Run("failed task cannot run again", func(t *testing.T) {
+		_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.FailTaskStub(task.ID, "FAIL_STUB", "boom"); err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.RunTask(task.ID)
+		if err == nil {
+			t.Fatal("expected rerun to fail")
+		}
+		notRunnable, ok := err.(*TaskNotRunnableError)
+		if !ok {
+			t.Fatalf("expected TaskNotRunnableError, got %T", err)
+		}
+		if notRunnable.Status != models.TaskStatusFailed {
+			t.Fatalf("status = %q", notRunnable.Status)
+		}
+	})
+}

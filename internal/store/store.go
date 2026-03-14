@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,20 @@ type Store struct {
 	state    models.State
 	nextID   int
 	nextTask int
+}
+
+type TaskNotRunnableError struct {
+	ID     string
+	Status models.TaskStatus
+}
+
+func (e *TaskNotRunnableError) Error() string {
+	return fmt.Sprintf("task %s is not runnable from status %s", e.ID, e.Status)
+}
+
+func IsTaskNotRunnable(err error) bool {
+	var target *TaskNotRunnableError
+	return errors.As(err, &target)
 }
 
 func New(path string) (*Store, error) {
@@ -145,7 +160,7 @@ func (s *Store) executeTask(id string, fail bool, failMeta ...string) (models.Ta
 			continue
 		}
 		if task.Status != models.TaskStatusQueued {
-			return models.Task{}, fmt.Errorf("task %s is not runnable from status %s", id, task.Status)
+			return models.Task{}, &TaskNotRunnableError{ID: id, Status: task.Status}
 		}
 
 		task.Status = models.TaskStatusRunning

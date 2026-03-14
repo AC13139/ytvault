@@ -83,6 +83,10 @@ func (a *App) handleListTasks(w http.ResponseWriter, _ *http.Request) {
 func (a *App) handleRunTask(w http.ResponseWriter, r *http.Request) {
 	task, err := a.store.RunTask(r.PathValue("id"))
 	if err != nil {
+		if store.IsTaskNotRunnable(err) {
+			writeError(w, http.StatusConflict, "task_not_runnable", err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, "run_failed", err.Error())
 		return
 	}
@@ -117,6 +121,10 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 		task, err = a.store.RunTask(r.PathValue("id"))
 	}
 	if err != nil {
+		if store.IsTaskNotRunnable(err) {
+			writeError(w, http.StatusConflict, "task_not_runnable", err.Error())
+			return
+		}
 		writeError(w, http.StatusBadRequest, "execute_failed", err.Error())
 		return
 	}

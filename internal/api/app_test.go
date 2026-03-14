@@ -269,3 +269,83 @@ func TestRunTaskEndpointTransitionsQueuedToSucceeded(t *testing.T) {
 		t.Fatalf("persisted task = %+v", listResp.Items[0])
 	}
 }
+
+func TestExecuteTaskEndpointRejectsTerminalTaskRerun(t *testing.T) {
+	app := newTestApp(t)
+	createBody := []byte(`{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", bytes.NewReader(createBody))
+	createW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", createW.Code, createW.Body.String())
+	}
+
+	var createResp struct {
+		Task struct {
+			ID string `json:"id"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("succeeded task returns 409", func(t *testing.T) {
+		runReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+createResp.Task.ID+"/execute", bytes.NewReader([]byte(`{"mode":"stub"}`)))
+		runW := httptest.NewRecorder()
+		app.Routes().ServeHTTP(runW, runReq)
+		if runW.Code != http.StatusOK {
+			t.Fatalf("first execute status = %d body=%s", runW.Code, runW.Body.String())
+		}
+
+		rerunReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+createResp.Task.ID+"/execute", bytes.NewReader([]byte(`{"mode":"stub"}`)))
+		rerunW := httptest.NewRecorder()
+		app.Routes().ServeHTTP(rerunW, rerunReq)
+		if rerunW.Code != http.StatusConflict {
+			t.Fatalf("rerun status = %d body=%s", rerunW.Code, rerunW.Body.String())
+		}
+		if !strings.Contains(rerunW.Body.String(), `"code":"task_not_runnable"`) {
+			t.Fatalf("rerun body=%s", rerunW.Body.String())
+		}
+		if !strings.Contains(rerunW.Body.String(), "status succeeded") {
+			t.Fatalf("rerun body=%s", rerunW.Body.String())
+		}
+	})
+
+	t.Run("failed task returns 409", func(t *testing.T) {
+		app := newTestApp(t)
+		createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", bytes.NewReader(createBody))
+		createW := httptest.NewRecorder()
+		app.Routes().ServeHTTP(createW, createReq)
+		if createW.Code != http.StatusCreated {
+			t.Fatalf("create status = %d body=%s", createW.Code, createW.Body.String())
+		}
+		var failedCreateResp struct {
+			Task struct {
+				ID string `json:"id"`
+			} `json:"task"`
+		}
+		if err := json.Unmarshal(createW.Body.Bytes(), &failedCreateResp); err != nil {
+			t.Fatal(err)
+		}
+
+		failReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+failedCreateResp.Task.ID+"/execute", bytes.NewReader([]byte(`{"mode":"fail_stub"}`)))
+		failW := httptest.NewRecorder()
+		app.Routes().ServeHTTP(failW, failReq)
+		if failW.Code != http.StatusOK {
+			t.Fatalf("first fail execute status = %d body=%s", failW.Code, failW.Body.String())
+		}
+
+		rerunReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+failedCreateResp.Task.ID+"/execute", bytes.NewReader([]byte(`{"mode":"stub"}`)))
+		rerunW := httptest.NewRecorder()
+		app.Routes().ServeHTTP(rerunW, rerunReq)
+		if rerunW.Code != http.StatusConflict {
+			t.Fatalf("rerun status = %d body=%s", rerunW.Code, rerunW.Body.String())
+		}
+		if !strings.Contains(rerunW.Body.String(), `"code":"task_not_runnable"`) {
+			t.Fatalf("rerun body=%s", rerunW.Body.String())
+		}
+		if !strings.Contains(rerunW.Body.String(), "status failed") {
+			t.Fatalf("rerun body=%s", rerunW.Body.String())
+		}
+	})
+}
