@@ -27,6 +27,22 @@ Internal codename: YD
    `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli source add channel 'http://www.youtube.com/@SpeechLab-m7o'`
 4. Web intake: open `http://127.0.0.1:8080/`, choose `channel`, submit the same URL, then confirm the source row shows `@handle`, `validated`, normalized/original URL, and the prototype note.
 
+## Current `task run` stub
+- `POST /api/v1/tasks/{id}/run` is the current prototype trigger for an index task stub.
+- Scope is intentionally narrow: it only drives the stored task through `queued -> running -> succeeded` and records `completedAt`.
+- It does **not** perform real YouTube indexing, download, or worker execution yet.
+- CLI entry is `go run ./apps/cli task run <task_id>`.
+
+### Acceptance commands for the current stub
+1. API test: `go test ./internal/store ./internal/api`
+2. Manual API flow:
+   - Create source/task: `curl -s http://127.0.0.1:8080/api/v1/sources -X POST -H 'Content-Type: application/json' -d '{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}'`
+   - Run stub: `curl -s http://127.0.0.1:8080/api/v1/tasks/<task_id>/run -X POST -H 'Content-Type: application/json' -d '{}'`
+   - Verify persisted status: `curl -s http://127.0.0.1:8080/api/v1/tasks`
+3. CLI flow:
+   - `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli task list`
+   - `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli task run <task_id>`
+
 ## Documents
 - `docs/YD-PRD.md`
 - `docs/YD-ARCHITECTURE.md`
