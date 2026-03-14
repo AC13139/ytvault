@@ -42,16 +42,19 @@ const (
 	TaskStatusQueued    TaskStatus = "queued"
 	TaskStatusRunning   TaskStatus = "running"
 	TaskStatusSucceeded TaskStatus = "succeeded"
+	TaskStatusFailed    TaskStatus = "failed"
 )
 
 type Task struct {
-	ID          string     `json:"id"`
-	Type        string     `json:"type"`
-	EntityType  string     `json:"entityType"`
-	EntityID    string     `json:"entityId"`
-	Status      TaskStatus `json:"status"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	CompletedAt *time.Time `json:"completedAt,omitempty"`
+	ID           string     `json:"id"`
+	Type         string     `json:"type"`
+	EntityType   string     `json:"entityType"`
+	EntityID     string     `json:"entityId"`
+	Status       TaskStatus `json:"status"`
+	ErrorCode    string     `json:"errorCode,omitempty"`
+	ErrorMessage string     `json:"errorMessage,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	CompletedAt  *time.Time `json:"completedAt,omitempty"`
 }
 
 type State struct {

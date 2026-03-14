@@ -128,6 +128,14 @@ func (s *Store) ListTasks() []models.Task {
 }
 
 func (s *Store) RunTask(id string) (models.Task, error) {
+	return s.executeTask(id, false)
+}
+
+func (s *Store) FailTaskStub(id string, code string, message string) (models.Task, error) {
+	return s.executeTask(id, true, code, message)
+}
+
+func (s *Store) executeTask(id string, fail bool, failMeta ...string) (models.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -141,13 +149,25 @@ func (s *Store) RunTask(id string) (models.Task, error) {
 		}
 
 		task.Status = models.TaskStatusRunning
+		task.ErrorCode = ""
+		task.ErrorMessage = ""
 		if err := s.saveLocked(); err != nil {
 			return models.Task{}, err
 		}
 
 		now := time.Now().UTC()
-		task.Status = models.TaskStatusSucceeded
 		task.CompletedAt = &now
+		if fail {
+			task.Status = models.TaskStatusFailed
+			if len(failMeta) > 0 {
+				task.ErrorCode = failMeta[0]
+			}
+			if len(failMeta) > 1 {
+				task.ErrorMessage = failMeta[1]
+			}
+		} else {
+			task.Status = models.TaskStatusSucceeded
+		}
 		if err := s.saveLocked(); err != nil {
 			return models.Task{}, err
 		}

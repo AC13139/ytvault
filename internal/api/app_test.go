@@ -107,6 +107,95 @@ func TestIndexShowsSourceProfileDetails(t *testing.T) {
 	}
 }
 
+func TestExecuteTaskEndpointCanFailStub(t *testing.T) {
+	app := newTestApp(t)
+	createBody := []byte(`{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", bytes.NewReader(createBody))
+	createW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", createW.Code, createW.Body.String())
+	}
+
+	var createResp struct {
+		Task struct {
+			ID string `json:"id"`
+		} `json:"task"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
+		t.Fatal(err)
+	}
+
+	executeReq := httptest.NewRequest(http.MethodPost, "/api/v1/tasks/"+createResp.Task.ID+"/execute", bytes.NewReader([]byte(`{"mode":"fail_stub"}`)))
+	executeW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(executeW, executeReq)
+	if executeW.Code != http.StatusOK {
+		t.Fatalf("execute status = %d body=%s", executeW.Code, executeW.Body.String())
+	}
+
+	var executeResp struct {
+		Task struct {
+			ID           string `json:"id"`
+			Status       string `json:"status"`
+			ErrorCode    string `json:"errorCode"`
+			ErrorMessage string `json:"errorMessage"`
+			CompletedAt  string `json:"completedAt"`
+		} `json:"task"`
+		Execution struct {
+			Mode string `json:"mode"`
+		} `json:"execution"`
+	}
+	if err := json.Unmarshal(executeW.Body.Bytes(), &executeResp); err != nil {
+		t.Fatal(err)
+	}
+	if executeResp.Task.ID != createResp.Task.ID {
+		t.Fatalf("task id = %q want %q", executeResp.Task.ID, createResp.Task.ID)
+	}
+	if executeResp.Task.Status != "failed" {
+		t.Fatalf("status = %q", executeResp.Task.Status)
+	}
+	if executeResp.Task.ErrorCode != "FAIL_STUB" {
+		t.Fatalf("errorCode = %q", executeResp.Task.ErrorCode)
+	}
+	if !strings.Contains(executeResp.Task.ErrorMessage, "fail_stub") {
+		t.Fatalf("errorMessage = %q", executeResp.Task.ErrorMessage)
+	}
+	if executeResp.Task.CompletedAt == "" {
+		t.Fatal("expected completedAt to be set")
+	}
+	if executeResp.Execution.Mode != "fail_stub" {
+		t.Fatalf("execution mode = %q", executeResp.Execution.Mode)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
+	listW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(listW, listReq)
+	if listW.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s", listW.Code, listW.Body.String())
+	}
+
+	var listResp struct {
+		Items []struct {
+			ID           string `json:"id"`
+			Status       string `json:"status"`
+			ErrorCode    string `json:"errorCode"`
+			ErrorMessage string `json:"errorMessage"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listW.Body.Bytes(), &listResp); err != nil {
+		t.Fatal(err)
+	}
+	if len(listResp.Items) != 1 {
+		t.Fatalf("task count = %d", len(listResp.Items))
+	}
+	if listResp.Items[0].ID != createResp.Task.ID || listResp.Items[0].Status != "failed" {
+		t.Fatalf("persisted task = %+v", listResp.Items[0])
+	}
+	if listResp.Items[0].ErrorCode != "FAIL_STUB" {
+		t.Fatalf("persisted errorCode = %q", listResp.Items[0].ErrorCode)
+	}
+}
+
 func TestRunTaskEndpointTransitionsQueuedToSucceeded(t *testing.T) {
 	app := newTestApp(t)
 	createBody := []byte(`{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}`)

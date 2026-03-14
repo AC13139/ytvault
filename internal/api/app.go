@@ -29,6 +29,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/sources", a.handleCreateSource)
 	mux.HandleFunc("GET /api/v1/tasks", a.handleListTasks)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/run", a.handleRunTask)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("GET /", a.handleIndex)
 	return withJSONLogging(mux)
 }
@@ -86,6 +87,48 @@ func (a *App) handleRunTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"task": task})
+}
+
+type executeTaskRequest struct {
+	Mode string `json:"mode"`
+}
+
+func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
+	var req executeTaskRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err.Error() != "EOF" {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
+			return
+		}
+	}
+
+	mode := req.Mode
+	if mode == "" {
+		mode = "stub"
+	}
+
+	var (
+		task models.Task
+		err  error
+	)
+	if mode == "fail_stub" {
+		task, err = a.store.FailTaskStub(r.PathValue("id"), "FAIL_STUB", "stubbed execution failure triggered by request mode=fail_stub")
+	} else {
+		task, err = a.store.RunTask(r.PathValue("id"))
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "execute_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"task": task,
+		"execution": map[string]any{
+			"action":  "execute",
+			"handler": "index-task-execute-skeleton",
+			"mode":    mode,
+			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
+		},
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
