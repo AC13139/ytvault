@@ -126,3 +126,33 @@ func (s *Store) ListTasks() []models.Task {
 	copy(out, s.state.Tasks)
 	return out
 }
+
+func (s *Store) RunTask(id string) (models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.state.Tasks {
+		task := &s.state.Tasks[i]
+		if task.ID != id {
+			continue
+		}
+		if task.Status != models.TaskStatusQueued {
+			return models.Task{}, fmt.Errorf("task %s is not runnable from status %s", id, task.Status)
+		}
+
+		task.Status = models.TaskStatusRunning
+		if err := s.saveLocked(); err != nil {
+			return models.Task{}, err
+		}
+
+		now := time.Now().UTC()
+		task.Status = models.TaskStatusSucceeded
+		task.CompletedAt = &now
+		if err := s.saveLocked(); err != nil {
+			return models.Task{}, err
+		}
+		return *task, nil
+	}
+
+	return models.Task{}, fmt.Errorf("task %s not found", id)
+}

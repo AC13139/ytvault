@@ -47,3 +47,38 @@ func TestCreateSource(t *testing.T) {
 		t.Fatalf("expected 1 task, got %d", got)
 	}
 }
+
+func TestRunTaskTransitionsQueuedToSucceeded(t *testing.T) {
+	tmp := t.TempDir()
+	s, err := New(filepath.Join(tmp, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := yt.NormalizeSource("https://www.youtube.com/watch?v=abc123", models.SourceKindVideo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runTask, err := s.RunTask(task.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runTask.Status != models.TaskStatusSucceeded {
+		t.Fatalf("status = %q", runTask.Status)
+	}
+	if runTask.CompletedAt == nil {
+		t.Fatal("expected completedAt to be set")
+	}
+
+	tasks := s.ListTasks()
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+	if tasks[0].Status != models.TaskStatusSucceeded {
+		t.Fatalf("persisted status = %q", tasks[0].Status)
+	}
+}
