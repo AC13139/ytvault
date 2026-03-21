@@ -13,3 +13,6 @@ __pycache__/
 api
 cli
 data/
+tmp/
+*.pid
+*.out

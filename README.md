@@ -47,3 +47,9 @@ Internal codename: YD
 - `docs/YD-PRD.md`
 - `docs/YD-ARCHITECTURE.md`
 - `docs/YD-PHASE1-PLAN.md`
+
+## Workspace structure
+- Repository root: `projects/YD/repo`
+- Local-only working materials: `projects/YD/work`
+- Keep team coordination files, drafts, temp outputs, and local test artifacts in `../work`, not in this Git repository.
+- Repository boundary details: `docs/REPO_BOUNDARY.md`
