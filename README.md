@@ -1,55 +1,244 @@
 # YtVault
 
-YtVault is a self-hosted YouTube sync and download system focused on long-running stability, recoverability, and clear operations.
+Self-hosted YouTube archive system. Add channels, playlists, or individual videos — YtVault indexes them, schedules recurring scans, and downloads everything to your own storage.
 
-Internal codename: YD
+## Features
 
-## Phase 1 goals
-- Support YouTube channel / playlist / single video sources
-- Provide both Web UI and CLI
-- Support credentials/cookies as a first-class capability
-- Separate indexing, downloading, and metadata processing
-- Ship as a stable Docker Compose deployment
+- **Sources** — add YouTube channels, playlists, or single videos by URL
+- **Indexing** — scans a source with `yt-dlp` and stores all video metadata
+- **Downloading** — downloads video+audio merged to MP4 via `ffmpeg`
+- **Scheduler** — set per-source intervals (1h–1 week); auto-download newly found videos
+- **Web UI** — single-page interface with Sources / Media / Tasks / Schedules tabs
+- **REST API** — full HTTP API for scripting and automation
+- **Persistent storage** — JSON state file + download directory; survives restarts
 
-## Current prototype boundary
-- Source intake is real: API / Web / CLI validate supported YouTube URLs, normalize them, and persist a source record.
-- Source presentation is intentionally product-like but honest: stored source rows include normalized URL, original input URL, locator, path label, intake stage, and prototype notes.
-- Initial index tasks are queue stubs only. Live channel/playlist/video inspection and downloading are **not** wired yet.
+---
 
-### Example channel input accepted in this iteration
-- `http://www.youtube.com/@SpeechLab-m7o`
+## Quick Start (Docker Compose)
 
-## Quick validation
-1. Start API: `YTVAULT_ADDR=:8080 YTVAULT_DATA_PATH=./tmp/demo-state.json go run ./apps/api`
-2. API intake:
-   `curl -s http://127.0.0.1:8080/api/v1/sources -X POST -H 'Content-Type: application/json' -d '{"kind":"channel","url":"http://www.youtube.com/@SpeechLab-m7o"}'`
-3. CLI intake:
-   `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli source add channel 'http://www.youtube.com/@SpeechLab-m7o'`
-4. Web intake: open `http://127.0.0.1:8080/`, choose `channel`, submit the same URL, then confirm the source row shows `@handle`, `validated`, normalized/original URL, and the prototype note.
+**Prerequisites:** Docker and Docker Compose.
 
-## Current `task run` stub
-- `POST /api/v1/tasks/{id}/run` is the current prototype trigger for an index task stub.
-- Scope is intentionally narrow: it only drives the stored task through `queued -> running -> succeeded` and records `completedAt`.
-- It does **not** perform real YouTube indexing, download, or worker execution yet.
-- CLI entry is `go run ./apps/cli task run <task_id>`.
+```bash
+git clone https://github.com/AC13139/ytvault.git
+cd ytvault
+docker compose up --build -d
+```
 
-### Acceptance commands for the current stub
-1. API test: `go test ./internal/store ./internal/api`
-2. Manual API flow:
-   - Create source/task: `curl -s http://127.0.0.1:8080/api/v1/sources -X POST -H 'Content-Type: application/json' -d '{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}'`
-   - Run stub: `curl -s http://127.0.0.1:8080/api/v1/tasks/<task_id>/run -X POST -H 'Content-Type: application/json' -d '{}'`
-   - Verify persisted status: `curl -s http://127.0.0.1:8080/api/v1/tasks`
-3. CLI flow:
-   - `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli task list`
-   - `YTVAULT_API=http://127.0.0.1:8080 go run ./apps/cli task run <task_id>`
+Open **http://localhost:8080** in your browser.
 
-## Documents
-- `docs/YD-PRD.md`
-- `docs/YD-ARCHITECTURE.md`
-- `docs/YD-PHASE1-PLAN.md`
+Data (state file + downloaded videos) is stored in `./data/` on the host and persists across restarts and container rebuilds.
 
-## Workspace structure
-- Repository root: `projects/YD/repo`
-- Local-only working materials: `projects/YD/work`
-- Keep team coordination files, drafts, temp outputs, and local test artifacts in `../work`, not in this Git repository.
-- Repository boundary details: `docs/REPO_BOUNDARY.md`
+---
+
+## Running Locally (without Docker)
+
+**Prerequisites:** Go 1.26+, `yt-dlp`, and `ffmpeg` on your PATH.
+
+Install yt-dlp and ffmpeg:
+```bash
+pip install yt-dlp          # or: brew install yt-dlp
+brew install ffmpeg         # or: apt install ffmpeg
+```
+
+Run the API server:
+```bash
+go run ./apps/api
+```
+
+The server starts on **:8080** by default. Open http://localhost:8080.
+
+---
+
+## Configuration
+
+All settings are environment variables:
+
+**API server:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `YTVAULT_ADDR` | `:8080` | Listen address |
+| `YTVAULT_DATA_PATH` | `./data/state.json` | State file path |
+| `YTVAULT_DOWNLOAD_PATH` | `./data/downloads` | Download directory |
+
+**CLI:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `YTVAULT_API` | `http://127.0.0.1:8080` | API base URL |
+
+Example:
+```bash
+YTVAULT_ADDR=:9000 YTVAULT_DOWNLOAD_PATH=/mnt/media go run ./apps/api
+```
+
+---
+
+## Web UI Guide
+
+### Sources tab
+
+The home tab. Add a new source and manage existing ones.
+
+**Adding a source:**
+1. Choose **Kind**: Video, Playlist, or Channel
+2. Paste the YouTube URL
+3. Click **Add Source** — a queued index task is created automatically
+
+**Source actions (per row):**
+- **View media** — switches to the Media tab filtered to that source
+- **Download all** — creates download tasks for all indexed-but-not-downloaded videos
+- **Re-index** — triggers a fresh scan of the source (picks up new videos)
+
+**Setting a schedule:**
+Each source row has an inline schedule form:
+1. Choose an interval (Every 1h / 6h / 12h / 24h / 1 week)
+2. Optionally tick **Auto-dl** — newly found videos are downloaded automatically after each index
+3. Click **Set** to save; the schedule activates immediately
+4. Click **Remove** → **Confirm?** to delete the schedule (two-click, no popup)
+
+### Media tab
+
+Lists all indexed videos. Use the **Filter** dropdown to narrow by source.
+
+Statuses:
+- `pending` — indexed but not downloaded
+- `downloading` — download in progress
+- `done` — downloaded; file path shown
+- `failed` — download failed; check the task error in the Tasks tab
+
+> **Note:** Failed downloads cannot currently be retried through the UI or API. This is a known limitation.
+
+### Tasks tab
+
+Shows all index and download tasks. Click **Start** on any `queued` task to run it immediately. The scheduler starts tasks automatically — manual start is for one-off runs.
+
+Task statuses: `queued` → `running` → `succeeded` / `failed`
+
+### Schedules tab
+
+Overview of all active schedules across sources. Shows last and next run times, enabled state, and auto-download flag. Use the Sources tab to edit or remove individual schedules.
+
+---
+
+## CLI Usage
+
+The `yd` CLI connects to a running YtVault API server.
+
+```bash
+# Build the CLI
+make build          # produces bin/yd
+
+# Or run directly
+go run ./apps/cli <command>
+```
+
+Set `YTVAULT_API` if the server is not on localhost:8080:
+```bash
+export YTVAULT_API=http://my-server:8080
+```
+
+**Commands:**
+
+```bash
+yd health                                # check server health
+yd source list                           # list all sources
+yd source add video    <url>             # add a video source
+yd source add playlist <url>             # add a playlist source
+yd source add channel  <url>             # add a channel source
+yd task list                             # list all tasks
+yd task run <task_id>                    # stub-complete a queued task
+```
+
+---
+
+## API Reference
+
+### Sources
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/sources` | List all sources |
+| `POST` | `/api/v1/sources` | Add a source |
+| `GET` | `/api/v1/sources/{id}/media` | List media items for a source |
+| `POST` | `/api/v1/sources/{id}/reindex` | Start a new index task |
+| `POST` | `/api/v1/sources/{id}/download-all` | Create and start download tasks for all pending media |
+
+**Add source request:**
+```json
+{ "kind": "channel", "url": "https://www.youtube.com/@ChannelHandle" }
+```
+Supported kinds: `video`, `playlist`, `channel`
+
+### Schedules
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/schedules` | List all schedules |
+| `GET` | `/api/v1/sources/{id}/schedule` | Get schedule for a source |
+| `POST` | `/api/v1/sources/{id}/schedule` | Create or update a schedule |
+| `DELETE` | `/api/v1/sources/{id}/schedule` | Remove a schedule |
+
+**Set schedule request:**
+```json
+{ "intervalHours": 24, "enabled": true, "autoDownload": true }
+```
+
+### Tasks
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/tasks` | List all tasks |
+| `POST` | `/api/v1/tasks/{id}/start` | Start a queued task (async, via worker) |
+| `POST` | `/api/v1/tasks/{id}/run` | Stub-complete a task synchronously (legacy) |
+| `POST` | `/api/v1/tasks/{id}/execute` | Execute with mode: `stub` (succeed) or `fail_stub` (fail) |
+
+### Health
+
+```
+GET /healthz   →  { "status": "ok", "service": "ytvault-api", "timestamp": "..." }
+```
+
+---
+
+## Makefile Targets
+
+```bash
+make run-api       # run API server locally
+make test          # run all tests
+make build         # build binaries to bin/
+make docker-up     # docker compose up --build -d
+make docker-down   # docker compose down
+make docker-logs   # follow container logs
+make docker-build  # build Docker image only
+```
+
+---
+
+## Project Structure
+
+```
+apps/
+  api/        HTTP server entry point
+  cli/        CLI client
+internal/
+  api/        HTTP handlers and Web UI
+  models/     shared data types
+  scheduler/  background schedule runner
+  store/      JSON state persistence
+  worker/     async task executor
+  yt/         YouTube URL normalisation
+  ytdlp/      yt-dlp and ffmpeg wrappers
+```
+
+---
+
+## Supported YouTube URL Formats
+
+| Kind | Example URLs |
+|---|---|
+| Channel | `https://www.youtube.com/@Handle` |
+| Channel | `https://www.youtube.com/channel/UCxxxxxx` |
+| Playlist | `https://www.youtube.com/playlist?list=PLxxxxxx` |
+| Video | `https://www.youtube.com/watch?v=xxxxxxx` |
+| Video | `https://youtu.be/xxxxxxx` |
