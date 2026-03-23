@@ -10,8 +10,8 @@ coverage/
 __pycache__/
 .pytest_cache/
 .venv/
-api
-cli
+bin/api
+bin/cli
 data/
 tmp/
 *.pid

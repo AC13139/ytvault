@@ -79,7 +79,7 @@ func TestCLITaskListShowsFailureDetails(t *testing.T) {
 
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	app, err := apiapp.NewApp(filepath.Join(t.TempDir(), "state.json"))
+	app, err := apiapp.NewApp(filepath.Join(t.TempDir(), "state.json"), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

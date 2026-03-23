@@ -14,11 +14,12 @@ import (
 )
 
 type Store struct {
-	mu       sync.RWMutex
-	path     string
-	state    models.State
-	nextID   int
-	nextTask int
+	mu        sync.RWMutex
+	path      string
+	state     models.State
+	nextID    int
+	nextTask  int
+	nextMedia int
 }
 
 type TaskNotRunnableError struct {
@@ -36,7 +37,7 @@ func IsTaskNotRunnable(err error) bool {
 }
 
 func New(path string) (*Store, error) {
-	s := &Store{path: path, nextID: 1, nextTask: 1}
+	s := &Store{path: path, nextID: 1, nextTask: 1, nextMedia: 1}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
@@ -72,6 +73,13 @@ func (s *Store) load() error {
 			s.nextTask = n + 1
 		}
 	}
+	for _, item := range s.state.MediaItems {
+		var n int
+		fmt.Sscanf(item.ID, "media_%d", &n)
+		if n >= s.nextMedia {
+			s.nextMedia = n + 1
+		}
+	}
 	return nil
 }
 
@@ -86,12 +94,25 @@ func (s *Store) saveLocked() error {
 	return os.WriteFile(s.path, data, 0o644)
 }
 
+// ── Sources ──────────────────────────────────────────────────────────────────
+
 func (s *Store) ListSources() []models.Source {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]models.Source, len(s.state.Sources))
 	copy(out, s.state.Sources)
 	return out
+}
+
+func (s *Store) GetSource(id string) (models.Source, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, src := range s.state.Sources {
+		if src.ID == id {
+			return src, true
+		}
+	}
+	return models.Source{}, false
 }
 
 func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile) (models.Source, models.Task, error) {
@@ -134,6 +155,8 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile) (
 	return src, task, nil
 }
 
+// ── Tasks ────────────────────────────────────────────────────────────────────
+
 func (s *Store) ListTasks() []models.Task {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -142,10 +165,81 @@ func (s *Store) ListTasks() []models.Task {
 	return out
 }
 
+func (s *Store) GetTask(id string) (models.Task, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, task := range s.state.Tasks {
+		if task.ID == id {
+			return task, true
+		}
+	}
+	return models.Task{}, false
+}
+
+// MarkTaskRunning atomically transitions a task from queued → running.
+func (s *Store) MarkTaskRunning(id string) (models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Tasks {
+		task := &s.state.Tasks[i]
+		if task.ID != id {
+			continue
+		}
+		if task.Status != models.TaskStatusQueued {
+			return models.Task{}, &TaskNotRunnableError{ID: id, Status: task.Status}
+		}
+		task.Status = models.TaskStatusRunning
+		if err := s.saveLocked(); err != nil {
+			return models.Task{}, err
+		}
+		return *task, nil
+	}
+	return models.Task{}, fmt.Errorf("task %s not found", id)
+}
+
+// SucceedTask transitions a task from running → succeeded.
+func (s *Store) SucceedTask(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Tasks {
+		task := &s.state.Tasks[i]
+		if task.ID != id {
+			continue
+		}
+		now := time.Now().UTC()
+		task.Status = models.TaskStatusSucceeded
+		task.CompletedAt = &now
+		return s.saveLocked()
+	}
+	return fmt.Errorf("task %s not found", id)
+}
+
+// FailTask transitions a task from running → failed.
+func (s *Store) FailTask(id, code, message string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Tasks {
+		task := &s.state.Tasks[i]
+		if task.ID != id {
+			continue
+		}
+		now := time.Now().UTC()
+		task.Status = models.TaskStatusFailed
+		task.CompletedAt = &now
+		task.ErrorCode = code
+		task.ErrorMessage = message
+		return s.saveLocked()
+	}
+	return fmt.Errorf("task %s not found", id)
+}
+
+// RunTask is a stub that immediately transitions queued → succeeded.
+// Used by tests and the /run endpoint for backward compatibility.
 func (s *Store) RunTask(id string) (models.Task, error) {
 	return s.executeTask(id, false)
 }
 
+// FailTaskStub is a stub that immediately transitions queued → failed.
 func (s *Store) FailTaskStub(id string, code string, message string) (models.Task, error) {
 	return s.executeTask(id, true, code, message)
 }
@@ -190,4 +284,342 @@ func (s *Store) executeTask(id string, fail bool, failMeta ...string) (models.Ta
 	}
 
 	return models.Task{}, fmt.Errorf("task %s not found", id)
+}
+
+// ── Media Items ───────────────────────────────────────────────────────────────
+
+func (s *Store) ListMediaItemsBySource(sourceID string) []models.MediaItem {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []models.MediaItem
+	for _, item := range s.state.MediaItems {
+		if item.SourceID == sourceID {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func (s *Store) GetMediaItem(id string) (models.MediaItem, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, item := range s.state.MediaItems {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return models.MediaItem{}, false
+}
+
+// CreateMediaItems inserts new media items, skipping any (sourceID, videoID)
+// pairs that already exist. Returns the number of newly created items.
+func (s *Store) CreateMediaItems(items []models.MediaItem) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	type key struct{ source, video string }
+	existing := make(map[key]bool, len(s.state.MediaItems))
+	for _, m := range s.state.MediaItems {
+		existing[key{m.SourceID, m.VideoID}] = true
+	}
+
+	now := time.Now().UTC()
+	created := 0
+	for _, item := range items {
+		k := key{item.SourceID, item.VideoID}
+		if existing[k] {
+			continue
+		}
+		item.ID = fmt.Sprintf("media_%d", s.nextMedia)
+		item.CreatedAt = now
+		item.UpdatedAt = now
+		s.nextMedia++
+		s.state.MediaItems = append(s.state.MediaItems, item)
+		existing[k] = true
+		created++
+	}
+	if created == 0 {
+		return 0, nil
+	}
+	return created, s.saveLocked()
+}
+
+// UpdateMediaItemStatus updates the status, optional filePath, and optional
+// errorMsg of a media item.
+func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, filePath, errorMsg string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.MediaItems {
+		item := &s.state.MediaItems[i]
+		if item.ID != id {
+			continue
+		}
+		// Always overwrite both fields so retries never carry stale state.
+		item.Status = status
+		item.FilePath = filePath
+		item.ErrorMsg = errorMsg
+		item.UpdatedAt = time.Now().UTC()
+		return s.saveLocked()
+	}
+	return fmt.Errorf("media item %s not found", id)
+}
+
+// CreateDownloadTask creates a queued download task for a single media item.
+// Returns an error if the item does not exist or already has an active
+// (queued or running) download task.
+func (s *Store) CreateDownloadTask(mediaItemID string) (models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	itemFound := false
+	for _, item := range s.state.MediaItems {
+		if item.ID == mediaItemID {
+			itemFound = true
+			break
+		}
+	}
+	if !itemFound {
+		return models.Task{}, fmt.Errorf("media item %s not found", mediaItemID)
+	}
+	for _, task := range s.state.Tasks {
+		if task.Type == "download" && task.EntityID == mediaItemID &&
+			(task.Status == models.TaskStatusQueued || task.Status == models.TaskStatusRunning) {
+			return models.Task{}, fmt.Errorf("media item %s already has an active download task", mediaItemID)
+		}
+	}
+
+	now := time.Now().UTC()
+	task := models.Task{
+		ID:         fmt.Sprintf("task_%d", s.nextTask),
+		Type:       "download",
+		EntityType: "media",
+		EntityID:   mediaItemID,
+		Status:     models.TaskStatusQueued,
+		CreatedAt:  now,
+	}
+	s.nextTask++
+	s.state.Tasks = append([]models.Task{task}, s.state.Tasks...)
+	if err := s.saveLocked(); err != nil {
+		return models.Task{}, err
+	}
+	return task, nil
+}
+
+// CreateDownloadTasksForSource creates queued download tasks for all pending
+// media items belonging to the given source that do not already have an active
+// (queued or running) download task. Returns an error if the source does not exist.
+func (s *Store) CreateDownloadTasksForSource(sourceID string) ([]models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sourceFound := false
+	for _, src := range s.state.Sources {
+		if src.ID == sourceID {
+			sourceFound = true
+			break
+		}
+	}
+	if !sourceFound {
+		return nil, fmt.Errorf("source %s not found", sourceID)
+	}
+
+	// Collect media item IDs that already have an active download task.
+	alreadyQueued := make(map[string]bool)
+	for _, task := range s.state.Tasks {
+		if task.Type == "download" &&
+			(task.Status == models.TaskStatusQueued || task.Status == models.TaskStatusRunning) {
+			alreadyQueued[task.EntityID] = true
+		}
+	}
+
+	now := time.Now().UTC()
+	var tasks []models.Task
+	for _, item := range s.state.MediaItems {
+		if item.SourceID == sourceID &&
+			item.Status == models.MediaItemStatusPending &&
+			!alreadyQueued[item.ID] {
+			task := models.Task{
+				ID:         fmt.Sprintf("task_%d", s.nextTask),
+				Type:       "download",
+				EntityType: "media",
+				EntityID:   item.ID,
+				Status:     models.TaskStatusQueued,
+				CreatedAt:  now,
+			}
+			s.nextTask++
+			tasks = append(tasks, task)
+			alreadyQueued[item.ID] = true // prevent duplicate within this call
+		}
+	}
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+	s.state.Tasks = append(tasks, s.state.Tasks...)
+	if err := s.saveLocked(); err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+// CreateIndexTask creates a queued index task for a source. Returns an error
+// if the source does not exist or already has a queued/running index task.
+func (s *Store) CreateIndexTask(sourceID string, autoDownload bool) (models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sourceFound := false
+	for _, src := range s.state.Sources {
+		if src.ID == sourceID {
+			sourceFound = true
+			break
+		}
+	}
+	if !sourceFound {
+		return models.Task{}, fmt.Errorf("source %s not found", sourceID)
+	}
+	for _, task := range s.state.Tasks {
+		if task.Type == "index" && task.EntityID == sourceID &&
+			(task.Status == models.TaskStatusQueued || task.Status == models.TaskStatusRunning) {
+			return models.Task{}, fmt.Errorf("source %s already has an active index task", sourceID)
+		}
+	}
+
+	now := time.Now().UTC()
+	task := models.Task{
+		ID:           fmt.Sprintf("task_%d", s.nextTask),
+		Type:         "index",
+		EntityType:   "source",
+		EntityID:     sourceID,
+		Status:       models.TaskStatusQueued,
+		AutoDownload: autoDownload,
+		CreatedAt:    now,
+	}
+	s.nextTask++
+	s.state.Tasks = append([]models.Task{task}, s.state.Tasks...)
+	if err := s.saveLocked(); err != nil {
+		return models.Task{}, err
+	}
+	return task, nil
+}
+
+// ── Schedules ─────────────────────────────────────────────────────────────────
+
+func (s *Store) ListSchedules() []models.Schedule {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]models.Schedule, len(s.state.Schedules))
+	copy(out, s.state.Schedules)
+	return out
+}
+
+func (s *Store) GetSchedule(sourceID string) (models.Schedule, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, sched := range s.state.Schedules {
+		if sched.SourceID == sourceID {
+			return sched, true
+		}
+	}
+	return models.Schedule{}, false
+}
+
+// UpsertSchedule creates or replaces the schedule for a source.
+func (s *Store) UpsertSchedule(sourceID string, intervalHours int, enabled, autoDownload bool) (models.Schedule, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	sourceFound := false
+	for _, src := range s.state.Sources {
+		if src.ID == sourceID {
+			sourceFound = true
+			break
+		}
+	}
+	if !sourceFound {
+		return models.Schedule{}, fmt.Errorf("source %s not found", sourceID)
+	}
+	if intervalHours < 1 {
+		return models.Schedule{}, fmt.Errorf("intervalHours must be >= 1")
+	}
+
+	now := time.Now().UTC()
+	for i := range s.state.Schedules {
+		sched := &s.state.Schedules[i]
+		if sched.SourceID != sourceID {
+			continue
+		}
+		sched.IntervalHours = intervalHours
+		sched.Enabled = enabled
+		sched.AutoDownload = autoDownload
+		sched.NextRunAt = now.Add(time.Duration(intervalHours) * time.Hour)
+		sched.UpdatedAt = now
+		if err := s.saveLocked(); err != nil {
+			return models.Schedule{}, err
+		}
+		return *sched, nil
+	}
+
+	sched := models.Schedule{
+		SourceID:      sourceID,
+		IntervalHours: intervalHours,
+		Enabled:       enabled,
+		AutoDownload:  autoDownload,
+		NextRunAt:     now.Add(time.Duration(intervalHours) * time.Hour),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	s.state.Schedules = append(s.state.Schedules, sched)
+	if err := s.saveLocked(); err != nil {
+		return models.Schedule{}, err
+	}
+	return sched, nil
+}
+
+// DeleteSchedule removes the schedule for a source.
+func (s *Store) DeleteSchedule(sourceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, sched := range s.state.Schedules {
+		if sched.SourceID == sourceID {
+			s.state.Schedules = append(s.state.Schedules[:i], s.state.Schedules[i+1:]...)
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("schedule for source %s not found", sourceID)
+}
+
+// ListDueSchedules returns enabled schedules whose NextRunAt is on or before now.
+func (s *Store) ListDueSchedules(now time.Time) []models.Schedule {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []models.Schedule
+	for _, sched := range s.state.Schedules {
+		if sched.Enabled && !sched.NextRunAt.After(now) {
+			out = append(out, sched)
+		}
+	}
+	return out
+}
+
+// TouchSchedule records that a schedule fired: sets LastRunAt and advances NextRunAt.
+func (s *Store) TouchSchedule(sourceID string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Schedules {
+		sched := &s.state.Schedules[i]
+		if sched.SourceID != sourceID {
+			continue
+		}
+		// Re-check Enabled inside the lock: if the user disabled the schedule
+		// between ListDueSchedules (snapshot) and here, treat as a no-op so we
+		// don't advance NextRunAt for a disabled schedule.
+		if !sched.Enabled {
+			return nil
+		}
+		sched.LastRunAt = &now
+		sched.NextRunAt = now.Add(time.Duration(sched.IntervalHours) * time.Hour)
+		sched.UpdatedAt = now
+		return s.saveLocked()
+	}
+	return fmt.Errorf("schedule for source %s not found", sourceID)
 }

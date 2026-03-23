@@ -12,7 +12,7 @@ import (
 
 func newTestApp(t *testing.T) *App {
 	t.Helper()
-	app, err := NewApp(filepath.Join(t.TempDir(), "state.json"))
+	app, err := NewApp(filepath.Join(t.TempDir(), "state.json"), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,4 +348,96 @@ func TestExecuteTaskEndpointRejectsTerminalTaskRerun(t *testing.T) {
 			t.Fatalf("rerun body=%s", rerunW.Body.String())
 		}
 	})
+}
+
+func TestListSourceMediaReturnsNotFoundForUnknownSource(t *testing.T) {
+	app := newTestApp(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/src_999/media", nil)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":"source_not_found"`) {
+		t.Fatalf("body = %s", w.Body.String())
+	}
+}
+
+func TestListSourceMediaReturnsEmptyArrayForNewSource(t *testing.T) {
+	app := newTestApp(t)
+	createBody := []byte(`{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", bytes.NewReader(createBody))
+	createW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create status = %d", createW.Code)
+	}
+	var createResp struct {
+		Source struct{ ID string `json:"id"` } `json:"source"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sources/"+createResp.Source.ID+"/media", nil)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Items []any `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Items) != 0 {
+		t.Fatalf("expected empty items, got %d", len(resp.Items))
+	}
+}
+
+func TestDownloadAllReturnsErrorForUnknownSource(t *testing.T) {
+	app := newTestApp(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sources/src_999/download-all", nil)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"code":"create_tasks_failed"`) {
+		t.Fatalf("body = %s", w.Body.String())
+	}
+}
+
+func TestDownloadAllReturnsZeroCountForSourceWithNoMedia(t *testing.T) {
+	app := newTestApp(t)
+	createBody := []byte(`{"kind":"video","url":"https://www.youtube.com/watch?v=abc123"}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/sources", bytes.NewReader(createBody))
+	createW := httptest.NewRecorder()
+	app.Routes().ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create status = %d", createW.Code)
+	}
+	var createResp struct {
+		Source struct{ ID string `json:"id"` } `json:"source"`
+	}
+	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sources/"+createResp.Source.ID+"/download-all", nil)
+	w := httptest.NewRecorder()
+	app.Routes().ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Count int `json:"count"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Count != 0 {
+		t.Fatalf("expected count=0, got %d", resp.Count)
+	}
 }
