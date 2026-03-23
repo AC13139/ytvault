@@ -28,6 +28,21 @@ Open **http://localhost:8080** in your browser.
 
 Data (state file + downloaded videos) is stored in `./data/` on the host and persists across restarts and container rebuilds.
 
+### Troubleshooting: Docker Hub timeout on macOS
+
+If the build fails with `DeadlineExceeded` or `context deadline exceeded` when pulling base images, Docker Desktop cannot reach Docker Hub. Fix:
+
+1. Open **Docker Desktop → Settings → Docker Engine** and add:
+   ```json
+   {
+     "dns": ["8.8.8.8", "1.1.1.1"],
+     "registry-mirrors": ["https://mirror.gcr.io"]
+   }
+   ```
+2. Click **Apply & Restart**, then re-run `docker compose up --build -d`.
+
+If you are on a VPN, try disabling it for the initial build.
+
 ---
 
 ## Running Locally (without Docker)
