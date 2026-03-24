@@ -28,6 +28,15 @@ Open **http://localhost:8080** in your browser.
 
 Data (state file + downloaded videos) is stored in `./data/` on the host and persists across restarts and container rebuilds.
 
+**Custom port or other overrides:** Create a `docker-compose.override.yml` (gitignored) to override settings without conflicting with `git pull`:
+
+```yaml
+services:
+  api:
+    ports:
+      - "8099:8080"
+```
+
 ### Troubleshooting: Docker Hub timeout on macOS
 
 If the build fails with `DeadlineExceeded` or `context deadline exceeded` when pulling base images, Docker Desktop cannot reach Docker Hub. Fix:

@@ -18,3 +18,4 @@ tmp/
 *.out
 CLAUDE.md
 cookies.txt
+docker-compose.override.yml
