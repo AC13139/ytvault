@@ -13,7 +13,7 @@ FROM python:3.12-slim
 # ffmpeg: needed by yt-dlp to merge bestvideo+bestaudio streams
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg wget nodejs && \
-    pip install --no-cache-dir yt-dlp && \
+    pip install --no-cache-dir "yt-dlp[default]" && \
     rm -rf /var/lib/apt/lists/*
 
 # Run as a non-root user; pre-create /data with correct ownership

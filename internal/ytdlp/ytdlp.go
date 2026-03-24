@@ -26,6 +26,15 @@ func cookiesPath() string {
 	return p
 }
 
+// baseArgs returns common yt-dlp arguments (JS runtime, cookies).
+func baseArgs() []string {
+	args := []string{"--js-runtimes", "node"}
+	if cp := cookiesPath(); cp != "" {
+		args = append(args, "--cookies", cp)
+	}
+	return args
+}
+
 // VideoInfo represents a single video returned by yt-dlp.
 type VideoInfo struct {
 	ID       string
@@ -69,10 +78,7 @@ func (p probeResult) duration() int {
 //
 // Returns the channel/playlist title and the list of videos found.
 func Index(url, dateAfter string) (string, []VideoInfo, error) {
-	args := []string{"--flat-playlist", "-J", "--no-warnings"}
-	if cp := cookiesPath(); cp != "" {
-		args = append(args, "--cookies", cp)
-	}
+	args := append(baseArgs(), "--flat-playlist", "-J", "--no-warnings")
 	if dateAfter != "" {
 		args = append(args, "--dateafter", dateAfter)
 	}
@@ -122,16 +128,13 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 // Returns the path of the downloaded file.
 func Download(videoURL, outputDir string) (string, error) {
 	template := filepath.Join(outputDir, "%(uploader,channel,id)s", "%(title)s [%(id)s].%(ext)s")
-	args := []string{
+	args := append(baseArgs(),
 		"-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
 		"--merge-output-format", "mp4",
 		"--no-warnings",
 		"--print", "after_move:filepath",
 		"-o", template,
-	}
-	if cp := cookiesPath(); cp != "" {
-		args = append(args, "--cookies", cp)
-	}
+	)
 	args = append(args, videoURL)
 	cmd := exec.Command("yt-dlp", args...)
 	out, err := cmd.Output()
@@ -157,7 +160,7 @@ func ValidateCookies(cookiesFile string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "yt-dlp",
+	args := append(baseArgs(),
 		"--cookies", cookiesFile,
 		"--skip-download",
 		"--flat-playlist",
@@ -165,6 +168,7 @@ func ValidateCookies(cookiesFile string) error {
 		"--playlist-items", "1",
 		"https://www.youtube.com/feed/history",
 	)
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
