@@ -63,7 +63,7 @@ func (sc *Scheduler) tick(now time.Time) {
 	for _, sched := range due {
 		// Attempt to create the index task first. This check is atomic
 		// (inside the store lock), so it prevents duplicate active tasks.
-		task, err := sc.store.CreateIndexTask(sched.SourceID, sched.AutoDownload)
+		task, err := sc.store.CreateIndexTask(sched.SourceID, sched.AutoDownload, sched.DateAfter)
 		if err != nil {
 			// Task creation failed (e.g. already an active index task running).
 			// Still advance NextRunAt to prevent a tight retry loop on the next tick.

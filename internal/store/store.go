@@ -115,7 +115,7 @@ func (s *Store) GetSource(id string) (models.Source, bool) {
 	return models.Source{}, false
 }
 
-func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile) (models.Source, models.Task, error) {
+func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, dateAfter string) (models.Source, models.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now().UTC()
@@ -144,6 +144,7 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile) (
 		EntityType: "source",
 		EntityID:   src.ID,
 		Status:     models.TaskStatusQueued,
+		DateAfter:  dateAfter,
 		CreatedAt:  now,
 	}
 	s.nextTask++
@@ -153,6 +154,21 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile) (
 		return models.Source{}, models.Task{}, err
 	}
 	return src, task, nil
+}
+
+// UpdateSourceTitle updates a source's display title with the real name
+// returned by yt-dlp after indexing (e.g. the actual channel or playlist name).
+func (s *Store) UpdateSourceTitle(id, title string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Sources {
+		if s.state.Sources[i].ID == id {
+			s.state.Sources[i].Title = title
+			s.state.Sources[i].UpdatedAt = time.Now().UTC()
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("source %s not found", id)
 }
 
 // ── Tasks ────────────────────────────────────────────────────────────────────
@@ -463,7 +479,7 @@ func (s *Store) CreateDownloadTasksForSource(sourceID string) ([]models.Task, er
 
 // CreateIndexTask creates a queued index task for a source. Returns an error
 // if the source does not exist or already has a queued/running index task.
-func (s *Store) CreateIndexTask(sourceID string, autoDownload bool) (models.Task, error) {
+func (s *Store) CreateIndexTask(sourceID string, autoDownload bool, dateAfter string) (models.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -492,6 +508,7 @@ func (s *Store) CreateIndexTask(sourceID string, autoDownload bool) (models.Task
 		EntityID:     sourceID,
 		Status:       models.TaskStatusQueued,
 		AutoDownload: autoDownload,
+		DateAfter:    dateAfter,
 		CreatedAt:    now,
 	}
 	s.nextTask++
@@ -524,7 +541,7 @@ func (s *Store) GetSchedule(sourceID string) (models.Schedule, bool) {
 }
 
 // UpsertSchedule creates or replaces the schedule for a source.
-func (s *Store) UpsertSchedule(sourceID string, intervalHours int, enabled, autoDownload bool) (models.Schedule, error) {
+func (s *Store) UpsertSchedule(sourceID string, intervalHours int, enabled, autoDownload bool, dateAfter string) (models.Schedule, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -551,6 +568,7 @@ func (s *Store) UpsertSchedule(sourceID string, intervalHours int, enabled, auto
 		sched.IntervalHours = intervalHours
 		sched.Enabled = enabled
 		sched.AutoDownload = autoDownload
+		sched.DateAfter = dateAfter
 		sched.NextRunAt = now.Add(time.Duration(intervalHours) * time.Hour)
 		sched.UpdatedAt = now
 		if err := s.saveLocked(); err != nil {
@@ -564,6 +582,7 @@ func (s *Store) UpsertSchedule(sourceID string, intervalHours int, enabled, auto
 		IntervalHours: intervalHours,
 		Enabled:       enabled,
 		AutoDownload:  autoDownload,
+		DateAfter:     dateAfter,
 		NextRunAt:     now.Add(time.Duration(intervalHours) * time.Hour),
 		CreatedAt:     now,
 		UpdatedAt:     now,

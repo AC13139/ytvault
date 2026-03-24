@@ -26,7 +26,7 @@ func createTestSource(t *testing.T, s *Store, rawURL string) (models.Source, mod
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, task, err := s.CreateSource(models.SourceKindVideo, profile)
+	src, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestCreateSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, task, err := s.CreateSource(models.SourceKindVideo, profile)
+	src, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRunTaskTransitionsQueuedToSucceeded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+	_, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestRunTaskRejectsNonQueuedTerminalTasks(t *testing.T) {
 	}
 
 	t.Run("succeeded task cannot run again", func(t *testing.T) {
-		_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+		_, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,7 +141,7 @@ func TestRunTaskRejectsNonQueuedTerminalTasks(t *testing.T) {
 	})
 
 	t.Run("failed task cannot run again", func(t *testing.T) {
-		_, task, err := s.CreateSource(models.SourceKindVideo, profile)
+		_, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,12 +274,12 @@ func TestCreateIndexTask(t *testing.T) {
 	src, initial := createTestSource(t, s, "https://www.youtube.com/watch?v=abc123")
 
 	// Unknown source returns error.
-	if _, err := s.CreateIndexTask("src_999", false); err == nil {
+	if _, err := s.CreateIndexTask("src_999", false, ""); err == nil {
 		t.Fatal("expected error for unknown source")
 	}
 
 	// Blocked while the initial queued index task is still active.
-	if _, err := s.CreateIndexTask(src.ID, true); err == nil {
+	if _, err := s.CreateIndexTask(src.ID, true, ""); err == nil {
 		t.Fatal("expected error while initial task is queued")
 	}
 
@@ -289,7 +289,7 @@ func TestCreateIndexTask(t *testing.T) {
 	}
 
 	// Creates an index task.
-	task, err := s.CreateIndexTask(src.ID, true)
+	task, err := s.CreateIndexTask(src.ID, true, "")
 	if err != nil {
 		t.Fatalf("CreateIndexTask: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestCreateIndexTask(t *testing.T) {
 	}
 
 	// Duplicate is rejected while first task is active.
-	if _, err := s.CreateIndexTask(src.ID, false); err == nil {
+	if _, err := s.CreateIndexTask(src.ID, false, ""); err == nil {
 		t.Fatal("expected error for duplicate active index task")
 	}
 }
@@ -308,15 +308,15 @@ func TestUpsertAndDeleteSchedule(t *testing.T) {
 	src, _ := createTestSource(t, s, "https://www.youtube.com/watch?v=abc123")
 
 	// Unknown source returns error.
-	if _, err := s.UpsertSchedule("src_999", 24, true, false); err == nil {
+	if _, err := s.UpsertSchedule("src_999", 24, true, false, ""); err == nil {
 		t.Fatal("expected error for unknown source")
 	}
 	// Invalid interval.
-	if _, err := s.UpsertSchedule(src.ID, 0, true, false); err == nil {
+	if _, err := s.UpsertSchedule(src.ID, 0, true, false, ""); err == nil {
 		t.Fatal("expected error for intervalHours=0")
 	}
 
-	sched, err := s.UpsertSchedule(src.ID, 24, true, true)
+	sched, err := s.UpsertSchedule(src.ID, 24, true, true, "")
 	if err != nil {
 		t.Fatalf("UpsertSchedule: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestUpsertAndDeleteSchedule(t *testing.T) {
 	}
 
 	// Update: change interval and disable.
-	sched2, err := s.UpsertSchedule(src.ID, 6, false, false)
+	sched2, err := s.UpsertSchedule(src.ID, 6, false, false, "")
 	if err != nil {
 		t.Fatalf("UpsertSchedule update: %v", err)
 	}
@@ -356,11 +356,11 @@ func TestListDueSchedules(t *testing.T) {
 	src2, _ := createTestSource(t, s, "https://www.youtube.com/watch?v=def456")
 
 	// src1: enabled, due now (very short interval so NextRunAt is already past)
-	if _, err := s.UpsertSchedule(src1.ID, 24, true, false); err != nil {
+	if _, err := s.UpsertSchedule(src1.ID, 24, true, false, ""); err != nil {
 		t.Fatal(err)
 	}
 	// src2: disabled — should not be due
-	if _, err := s.UpsertSchedule(src2.ID, 1, false, false); err != nil {
+	if _, err := s.UpsertSchedule(src2.ID, 1, false, false, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -380,7 +380,7 @@ func TestListDueSchedules(t *testing.T) {
 func TestTouchSchedule(t *testing.T) {
 	s := newTestStore(t)
 	src, _ := createTestSource(t, s, "https://www.youtube.com/watch?v=abc123")
-	if _, err := s.UpsertSchedule(src.ID, 6, true, false); err != nil {
+	if _, err := s.UpsertSchedule(src.ID, 6, true, false, ""); err != nil {
 		t.Fatal(err)
 	}
 

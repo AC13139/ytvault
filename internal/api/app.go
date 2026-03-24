@@ -58,8 +58,9 @@ func (a *App) Routes() http.Handler {
 // ── Source handlers ───────────────────────────────────────────────────────────
 
 type createSourceRequest struct {
-	Kind string `json:"kind"`
-	URL  string `json:"url"`
+	Kind      string `json:"kind"`
+	URL       string `json:"url"`
+	DateAfter string `json:"dateAfter,omitempty"`
 }
 
 type createSourceResponse struct {
@@ -91,7 +92,7 @@ func (a *App) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_source", err.Error())
 		return
 	}
-	src, task, err := a.store.CreateSource(kind, profile)
+	src, task, err := a.store.CreateSource(kind, profile, req.DateAfter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return
@@ -143,7 +144,13 @@ func (a *App) handleDownloadAll(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleReindex(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	task, err := a.store.CreateIndexTask(id, false)
+	var req struct {
+		DateAfter string `json:"dateAfter"`
+	}
+	// Body is optional; ignore parse errors
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	task, err := a.store.CreateIndexTask(id, false, req.DateAfter)
 	if err != nil {
 		writeError(w, http.StatusConflict, "create_failed", err.Error())
 		return
@@ -159,9 +166,10 @@ func (a *App) handleReindex(w http.ResponseWriter, r *http.Request) {
 // ── Schedule handlers ─────────────────────────────────────────────────────────
 
 type setScheduleRequest struct {
-	IntervalHours int  `json:"intervalHours"`
-	Enabled       bool `json:"enabled"`
-	AutoDownload  bool `json:"autoDownload"`
+	IntervalHours int    `json:"intervalHours"`
+	Enabled       bool   `json:"enabled"`
+	AutoDownload  bool   `json:"autoDownload"`
+	DateAfter     string `json:"dateAfter,omitempty"`
 }
 
 func (a *App) handleListSchedules(w http.ResponseWriter, _ *http.Request) {
@@ -189,7 +197,7 @@ func (a *App) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_interval", "intervalHours must be >= 1")
 		return
 	}
-	sched, err := a.store.UpsertSchedule(id, req.IntervalHours, req.Enabled, req.AutoDownload)
+	sched, err := a.store.UpsertSchedule(id, req.IntervalHours, req.Enabled, req.AutoDownload, req.DateAfter)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "schedule_failed", err.Error())
 		return

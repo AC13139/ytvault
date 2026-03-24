@@ -52,6 +52,7 @@ type Task struct {
 	EntityID     string     `json:"entityId"`
 	Status       TaskStatus `json:"status"`
 	AutoDownload bool       `json:"autoDownload,omitempty"` // if true, worker auto-downloads after index
+	DateAfter    string     `json:"dateAfter,omitempty"`    // yt-dlp --dateafter value, e.g. "now-30days"
 	ErrorCode    string     `json:"errorCode,omitempty"`
 	ErrorMessage string     `json:"errorMessage,omitempty"`
 	CreatedAt    time.Time  `json:"createdAt"`
@@ -86,7 +87,8 @@ type Schedule struct {
 	SourceID      string     `json:"sourceId"`
 	IntervalHours int        `json:"intervalHours"` // 1, 6, 12, 24, 168
 	Enabled       bool       `json:"enabled"`
-	AutoDownload  bool       `json:"autoDownload"` // if true, new videos are downloaded automatically
+	AutoDownload  bool       `json:"autoDownload"`          // if true, new videos are downloaded automatically
+	DateAfter     string     `json:"dateAfter,omitempty"`   // yt-dlp --dateafter value, e.g. "now-30days"
 	LastRunAt     *time.Time `json:"lastRunAt,omitempty"`
 	NextRunAt     time.Time  `json:"nextRunAt"`
 	CreatedAt     time.Time  `json:"createdAt"`

@@ -23,7 +23,31 @@ func tag(text string) string {
 	return fmt.Sprintf(`<span class="tag">%s</span>`, html.EscapeString(text))
 }
 
-// ── Schedule cell helpers ─────────────────────────────────────────────────────
+// ── Date-filter helpers ───────────────────────────────────────────────────────
+
+// dateAfterPresets lists the yt-dlp --dateafter presets shown in the UI.
+var dateAfterPresets = []struct{ v, l string }{
+	{"", "All time"},
+	{"now-30days", "Last 30 days"},
+	{"now-90days", "Last 3 months"},
+	{"now-365days", "Last year"},
+	{"now-730days", "Last 2 years"},
+}
+
+func buildDateAfterOptions(selected string) string {
+	var b strings.Builder
+	for _, p := range dateAfterPresets {
+		sel := ""
+		if p.v == selected {
+			sel = ` selected`
+		}
+		fmt.Fprintf(&b, `<option value="%s"%s>%s</option>`,
+			html.EscapeString(p.v), sel, html.EscapeString(p.l))
+	}
+	return b.String()
+}
+
+// ── Schedule cell (channel/playlist only) ────────────────────────────────────
 
 func buildIntervalOptions(selected int) string {
 	opts := []struct {
@@ -43,14 +67,21 @@ func buildIntervalOptions(selected int) string {
 	return b.String()
 }
 
-func buildScheduleCell(sourceID string, schedBySource map[string]models.Schedule) string {
+func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource map[string]models.Schedule) string {
+	// Schedules only make sense for channel/playlist (not a single video).
+	if kind == models.SourceKindVideo {
+		return `<span class="src-meta">N/A for videos</span>`
+	}
+
 	defaultInterval := 24
 	autoDLChecked := ""
+	defaultDateAfter := ""
 	schedStatus := `<span class="src-meta">No schedule</span>`
 	removeBtn := ""
 
 	if sched, ok := schedBySource[sourceID]; ok {
 		defaultInterval = sched.IntervalHours
+		defaultDateAfter = sched.DateAfter
 		if sched.AutoDownload {
 			autoDLChecked = " checked"
 		}
@@ -73,21 +104,43 @@ func buildScheduleCell(sourceID string, schedBySource map[string]models.Schedule
 		)
 	}
 
+	sid := html.EscapeString(sourceID)
 	return fmt.Sprintf(
 		`<div>%s</div>`+
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">`+
 			`<select id="sched-interval-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
+			`<select id="sched-dateafter-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
 			`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">`+
 			`<input type="checkbox" id="sched-autodl-%s"%s style="width:auto;margin:0"> Auto-dl</label>`+
 			`<button class="btn-sm btn-blue" onclick="setSchedule('%s')">Set</button>%s`+
 			`</div>`,
 		schedStatus,
-		html.EscapeString(sourceID),
-		buildIntervalOptions(defaultInterval),
-		html.EscapeString(sourceID),
-		autoDLChecked,
-		html.EscapeString(sourceID),
-		removeBtn,
+		sid, buildIntervalOptions(defaultInterval),
+		sid, buildDateAfterOptions(defaultDateAfter),
+		sid, autoDLChecked,
+		sid, removeBtn,
+	)
+}
+
+// ── Actions cell ──────────────────────────────────────────────────────────────
+
+func buildActionsCell(sourceID string, kind models.SourceKind) string {
+	sid := html.EscapeString(sourceID)
+	if kind == models.SourceKindVideo {
+		// Single video: simple refresh, no date filter
+		return fmt.Sprintf(
+			`<button class="btn-sm btn-gray" onclick="scanSource('%s','')">Refresh</button>`,
+			sid,
+		)
+	}
+	// Channel or playlist: date filter + "Scan for new videos"
+	return fmt.Sprintf(
+		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
+			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
+			`<button class="btn-sm btn-gray" onclick="scanSource('%s',document.getElementById('scan-date-%s').value)">Scan</button>`+
+			`</div>`,
+		sid, buildDateAfterOptions(""),
+		sid, sid,
 	)
 }
 
@@ -120,7 +173,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 
-		// Detail cell: title, kind/path/stage tags, URLs, summary, next action
+		// Detail cell
 		detail := fmt.Sprintf(
 			`<div class="src-title">%s</div>`+
 				`<div class="tags">%s%s%s</div>`+
@@ -156,13 +209,11 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		mediaCell := mediaInfo + viewBtn + dlBtn
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			"<tr><td>%s</td><td>%s</td><td>%s</td><td>"+
-				`<button class="btn-sm btn-gray" onclick="reindex('%s')">Re-index</button>`+
-				"</td></tr>",
+			"<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
 			detail,
 			mediaCell,
-			buildScheduleCell(s.ID, schedBySource),
-			html.EscapeString(s.ID),
+			buildScheduleCell(s.ID, s.Kind, schedBySource),
+			buildActionsCell(s.ID, s.Kind),
 		))
 	}
 	if len(sourceRows) == 0 {
@@ -204,7 +255,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(mediaRows) == 0 {
-		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet — index a source first</td></tr>`}
+		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet — add a source and scan it</td></tr>`}
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
@@ -220,6 +271,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		typeLabel := html.EscapeString(string(t.Type))
 		if t.AutoDownload {
 			typeLabel += ` <span class="tag">auto-dl</span>`
+		}
+		if t.DateAfter != "" {
+			typeLabel += fmt.Sprintf(` <span class="tag">%s</span>`, html.EscapeString(t.DateAfter))
 		}
 		statusCell := statusBadge(string(t.Status))
 		if t.ErrorCode != "" {
@@ -255,6 +309,19 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		if sched.AutoDownload {
 			autoLabel = "yes"
 		}
+		dateLabel := "all time"
+		if sched.DateAfter != "" {
+			// Map the raw yt-dlp value to a human label
+			for _, p := range dateAfterPresets {
+				if p.v == sched.DateAfter {
+					dateLabel = p.l
+					break
+				}
+			}
+			if dateLabel == "all time" {
+				dateLabel = sched.DateAfter
+			}
+		}
 		lastRun := "never"
 		if sched.LastRunAt != nil {
 			lastRun = sched.LastRunAt.UTC().Format("2006-01-02 15:04")
@@ -265,9 +332,10 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			html.EscapeString(sched.SourceID),
 		)
 		schedRows = append(schedRows, fmt.Sprintf(
-			`<tr><td>%s</td><td class="src-meta">Every %dh</td><td class="src-meta">%s</td><td>%s</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			`<tr><td>%s</td><td class="src-meta">Every %dh</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
 			html.EscapeString(srcTitle),
 			sched.IntervalHours,
+			html.EscapeString(dateLabel),
 			autoLabel,
 			state,
 			lastRun,
@@ -276,7 +344,20 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(schedRows) == 0 {
-		schedRows = []string{`<tr><td colspan="7" class="empty">No schedules — set one from the Sources tab</td></tr>`}
+		schedRows = []string{`<tr><td colspan="8" class="empty">No schedules — set one from the Sources tab</td></tr>`}
+	}
+
+	// Check if any task is running (for auto-refresh)
+	hasRunning := false
+	for _, t := range tasks {
+		if t.Status == models.TaskStatusRunning {
+			hasRunning = true
+			break
+		}
+	}
+	autoRefreshJS := ""
+	if hasRunning {
+		autoRefreshJS = "setTimeout(()=>location.reload(),5000);"
 	}
 
 	// ── Page template ─────────────────────────────────────────────────────────
@@ -301,6 +382,7 @@ nav{display:flex;align-items:center;gap:12px;padding:0 20px;height:52px;backgrou
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
 .card-title{font-size:15px;font-weight:600;color:#f1f5f9}
 .form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px;align-items:end}
+.form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:10px;align-items:end}
 label{font-size:13px;color:#94a3b8;margin-bottom:3px;display:block}
 select,input[type=text]{width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:7px 10px;color:#e5e7eb;font-size:13px}
 select:focus,input:focus{outline:none;border-color:#3b82f6}
@@ -343,9 +425,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .toast-msg{background:#1e293b;border-radius:10px;padding:10px 14px;font-size:13px;max-width:340px;border-left:3px solid #3b82f6;pointer-events:auto;animation:tslide .2s ease}
 .toast-ok{border-color:#22c55e;color:#86efac}
 .toast-err{border-color:#ef4444;color:#fca5a5}
+.toast-info{border-color:#3b82f6;color:#93c5fd}
 @keyframes tslide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .empty{color:#4b5563;text-align:center;padding:28px;font-size:13px}
-@media(max-width:768px){.form-row{grid-template-columns:1fr}.nav-stats{display:none}}
+@media(max-width:768px){.form-row,.form-row-3{grid-template-columns:1fr}.nav-stats{display:none}}
 </style>
 </head>
 <body>
@@ -370,9 +453,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="tab-sources" class="tab-content">
   <div class="card">
     <div class="card-header"><span class="card-title">Add Source</span></div>
-    <div class="form-row">
+    <div class="form-row-3">
       <div><label>Kind</label>
-        <select id="kind">
+        <select id="kind" onchange="onKindChange(this.value)">
           <option value="video">Video</option>
           <option value="playlist">Playlist</option>
           <option value="channel">Channel</option>
@@ -380,6 +463,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
       <div><label>YouTube URL</label>
         <input type="text" id="url" placeholder="https://www.youtube.com/..." onkeydown="if(event.key==='Enter')submitForm()">
+      </div>
+      <div id="add-dateafter-wrap" style="display:none"><label>Date filter</label>
+        <select id="add-dateafter">%s</select>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
@@ -428,7 +514,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="card">
     <div class="card-header"><span class="card-title">Schedules (%d)</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Interval</th><th>Auto-DL</th><th>State</th><th>Last run</th><th>Next run</th><th></th></tr></thead>
+      <thead><tr><th>Source</th><th>Interval</th><th>Date filter</th><th>Auto-DL</th><th>State</th><th>Last run</th><th>Next run</th><th></th></tr></thead>
       <tbody>%s</tbody>
     </table></div>
   </div>
@@ -451,18 +537,30 @@ function toast(msg,type){
   document.getElementById('toast').appendChild(d);
   setTimeout(()=>d.remove(),4000);
 }
+function onKindChange(kind){
+  const wrap=document.getElementById('add-dateafter-wrap');
+  wrap.style.display=(kind==='channel'||kind==='playlist')?'':'none';
+}
 async function submitForm(){
   const kind=document.getElementById('kind').value;
   const url=document.getElementById('url').value.trim();
+  const dateAfterEl=document.getElementById('add-dateafter');
+  const dateAfter=(kind!=='video'&&dateAfterEl)?dateAfterEl.value:'';
   const st=document.getElementById('add-status');
   if(!url){st.textContent='Please enter a URL';st.style.color='#fca5a5';return;}
   st.textContent='Adding...';st.style.color='#94a3b8';
   try{
-    const res=await fetch('/api/v1/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind,url})});
+    const body={kind,url};
+    if(dateAfter)body.dateAfter=dateAfter;
+    const res=await fetch('/api/v1/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(res.ok){
-      toast('Source added: '+data.source.title,'ok');
-      setTimeout(()=>location.reload(),300);
+      // Auto-start the initial index task
+      if(data.task?.id){
+        await fetch('/api/v1/tasks/'+data.task.id+'/start',{method:'POST'}).catch(()=>{});
+      }
+      toast('Source added — scanning now…','ok');
+      setTimeout(()=>location.reload(),400);
     }else{
       const m=data.error?.message||JSON.stringify(data);
       st.textContent=m;st.style.color='#fca5a5';
@@ -470,15 +568,16 @@ async function submitForm(){
     }
   }catch(e){st.textContent='Network error';st.style.color='#fca5a5';toast('Network error','err');}
 }
-async function reindex(sourceId){
+async function scanSource(sourceId,dateAfter){
   try{
-    const res=await fetch('/api/v1/sources/'+sourceId+'/reindex',{method:'POST'});
+    const body=dateAfter?{dateAfter}:{};
+    const res=await fetch('/api/v1/sources/'+sourceId+'/reindex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(res.ok||res.status===202){
-      toast('Re-index started','ok');
+      toast(dateAfter?'Scanning ('+dateAfter+')…':'Scanning…','ok');
       setTimeout(()=>location.reload(),300);
     }else{
-      toast('Re-index failed: '+(data.error?.message||JSON.stringify(data)),'err');
+      toast('Scan failed: '+(data.error?.message||JSON.stringify(data)),'err');
     }
   }catch(e){toast('Network error','err');}
 }
@@ -501,7 +600,7 @@ async function downloadAll(sourceId){
     if(res.ok||res.status===202){
       const c=data.count||0,s=data.started||0;
       if(c===0){
-        toast('No pending media to download','ok');
+        toast('No pending media to download','info');
       }else{
         toast('Started '+s+' of '+c+' download(s)','ok');
         if(data.startErrors?.length)toast(data.startErrors.length+' failed to start','err');
@@ -515,7 +614,8 @@ async function downloadAll(sourceId){
 async function setSchedule(sourceId){
   const iv=document.getElementById('sched-interval-'+sourceId);
   const ad=document.getElementById('sched-autodl-'+sourceId);
-  const body={intervalHours:parseInt(iv.value),enabled:true,autoDownload:ad.checked};
+  const da=document.getElementById('sched-dateafter-'+sourceId);
+  const body={intervalHours:parseInt(iv.value),enabled:true,autoDownload:ad.checked,dateAfter:da?da.value:''};
   try{
     const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
@@ -565,15 +665,20 @@ function viewMedia(sourceId){
 window.onload=function(){
   const h=location.hash.slice(1);
   showTab(['sources','media','tasks','schedules'].includes(h)?h:'sources');
+  %s
 };
 </script>
 </body></html>`
 
+	addDateAfterOpts := buildDateAfterOptions("")
+
 	_, _ = w.Write([]byte(fmt.Sprintf(page,
 		len(sources), len(allMedia), len(tasks), len(schedules), // nav stats
+		addDateAfterOpts,                                          // add-source date filter options
 		len(sources), strings.Join(sourceRows, ""),               // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
 		len(tasks), strings.Join(taskRows, ""),                         // tasks tab
 		len(schedules), strings.Join(schedRows, ""),                    // schedules tab
+		autoRefreshJS,                                                   // auto-refresh if running tasks
 	)))
 }

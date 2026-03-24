@@ -63,12 +63,20 @@ func (w *Worker) runIndex(task models.Task) error {
 		return fmt.Errorf("source %s not found", task.EntityID)
 	}
 
-	log.Printf("worker: indexing source %s (%s)", src.ID, src.URL)
-	videos, err := ytdlp.Index(src.URL)
+	log.Printf("worker: indexing source %s (%s) dateAfter=%q", src.ID, src.URL, task.DateAfter)
+	title, videos, err := ytdlp.Index(src.URL, task.DateAfter)
 	if err != nil {
 		return fmt.Errorf("index %s: %w", src.URL, err)
 	}
 	log.Printf("worker: found %d video(s) for source %s", len(videos), src.ID)
+
+	// Update the source title with the real channel/playlist name returned by
+	// yt-dlp (only meaningful for channel and playlist kinds).
+	if title != "" && src.Kind != models.SourceKindVideo {
+		if err := w.store.UpdateSourceTitle(src.ID, title); err != nil {
+			log.Printf("worker: update title for source %s: %v", src.ID, err)
+		}
+	}
 
 	items := make([]models.MediaItem, len(videos))
 	for i, v := range videos {

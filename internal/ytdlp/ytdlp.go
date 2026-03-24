@@ -46,24 +46,35 @@ func (p probeResult) duration() int {
 
 // Index fetches the list of videos for a YouTube URL (channel, playlist, or
 // single video) using `yt-dlp --flat-playlist -J`.
-func Index(url string) ([]VideoInfo, error) {
-	cmd := exec.Command("yt-dlp", "--flat-playlist", "-J", "--no-warnings", url)
+//
+// dateAfter is an optional yt-dlp date filter (e.g. "now-30days", "now-365days",
+// or "YYYYMMDD"). Pass an empty string to index all available videos.
+//
+// Returns the channel/playlist title and the list of videos found.
+func Index(url, dateAfter string) (string, []VideoInfo, error) {
+	args := []string{"--flat-playlist", "-J", "--no-warnings"}
+	if dateAfter != "" {
+		args = append(args, "--dateafter", dateAfter)
+	}
+	args = append(args, url)
+
+	cmd := exec.Command("yt-dlp", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			return "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return nil, fmt.Errorf("yt-dlp exec: %w", err)
+		return "", nil, fmt.Errorf("yt-dlp exec: %w", err)
 	}
 
 	var root probeResult
 	if err := json.Unmarshal(out, &root); err != nil {
-		return nil, fmt.Errorf("parse yt-dlp output: %w", err)
+		return "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
 	}
 
 	// Single video: no entries
 	if len(root.Entries) == 0 {
-		return []VideoInfo{{
+		return root.Title, []VideoInfo{{
 			ID:       root.ID,
 			Title:    root.Title,
 			URL:      root.videoURL(),
@@ -71,7 +82,7 @@ func Index(url string) ([]VideoInfo, error) {
 		}}, nil
 	}
 
-	// Playlist or channel
+	// Playlist or channel — root.Title is the channel/playlist name
 	videos := make([]VideoInfo, 0, len(root.Entries))
 	for _, e := range root.Entries {
 		if e.ID == "" {
@@ -84,7 +95,7 @@ func Index(url string) ([]VideoInfo, error) {
 			Duration: e.duration(),
 		})
 	}
-	return videos, nil
+	return root.Title, videos, nil
 }
 
 // Download downloads a single video to outputDir using yt-dlp.
