@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"ytvault/internal/models"
@@ -20,6 +21,9 @@ type App struct {
 }
 
 func NewApp(dataPath, downloadDir string) (*App, error) {
+	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create download dir %s: %w", downloadDir, err)
+	}
 	s, err := store.New(dataPath)
 	if err != nil {
 		return nil, err
