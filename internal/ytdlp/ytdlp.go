@@ -69,7 +69,7 @@ func (p probeResult) duration() int {
 //
 // Returns the channel/playlist title and the list of videos found.
 func Index(url, dateAfter string) (string, []VideoInfo, error) {
-	args := []string{"--flat-playlist", "-J", "--no-warnings", "--skip-download", "--no-check-formats"}
+	args := []string{"--flat-playlist", "-J", "--no-warnings", "--skip-download", "--no-check-formats", "-f", "ba/b/w"}
 	if cp := cookiesPath(); cp != "" {
 		args = append(args, "--cookies", cp)
 	}
