@@ -2,12 +2,14 @@
 package ytdlp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // cookiesPath returns the cookies file path from YTVAULT_COOKIES_PATH if set
@@ -146,4 +148,30 @@ func Download(videoURL, outputDir string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("yt-dlp: no output filepath returned")
+}
+
+// ValidateCookies checks whether the cookies file at the given path allows
+// authenticated YouTube access. It attempts to fetch the user's watch history,
+// which requires valid authentication. Returns nil if valid, an error otherwise.
+func ValidateCookies(cookiesFile string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "yt-dlp",
+		"--cookies", cookiesFile,
+		"--skip-download",
+		"--flat-playlist",
+		"-J",
+		"--playlist-items", "1",
+		"https://www.youtube.com/feed/history",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			return fmt.Errorf("yt-dlp validation failed: %w", err)
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }

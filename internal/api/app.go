@@ -3,8 +3,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"ytvault/internal/models"
@@ -12,15 +16,24 @@ import (
 	"ytvault/internal/store"
 	"ytvault/internal/worker"
 	"ytvault/internal/yt"
+	"ytvault/internal/ytdlp"
 )
 
 type App struct {
-	store     *store.Store
-	worker    *worker.Worker
-	scheduler *scheduler.Scheduler
+	store       *store.Store
+	worker      *worker.Worker
+	scheduler   *scheduler.Scheduler
+	cookiesPath string
+
+	// Cached cookie validation result
+	cookiesMu         sync.Mutex
+	cookiesValid      *bool  // nil = not tested
+	cookiesValidMsg   string
+	cookiesValidAt    time.Time
+	cookiesValidMtime time.Time
 }
 
-func NewApp(dataPath, downloadDir string) (*App, error) {
+func NewApp(dataPath, downloadDir, cookiesPath string) (*App, error) {
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create download dir %s: %w", downloadDir, err)
 	}
@@ -31,7 +44,7 @@ func NewApp(dataPath, downloadDir string) (*App, error) {
 	w := worker.New(s, downloadDir)
 	sc := scheduler.New(s, w)
 	sc.Start()
-	return &App{store: s, worker: w, scheduler: sc}, nil
+	return &App{store: s, worker: w, scheduler: sc, cookiesPath: cookiesPath}, nil
 }
 
 // Close stops background goroutines. Call on server shutdown.
@@ -55,6 +68,10 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/{id}/run", a.handleRunTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/start", a.handleStartTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
+	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
+	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
+	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
+	mux.HandleFunc("POST /api/v1/cookies/validate", a.handleCookiesValidate)
 	mux.HandleFunc("GET /", a.handleIndex)
 	return withJSONLogging(mux)
 }
@@ -296,6 +313,158 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 			"mode":    mode,
 			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
 		},
+	})
+}
+
+// ── Cookie handlers ──────────────────────────────────────────────────────────
+
+const maxCookieSize = 1 << 20 // 1 MB
+
+func (a *App) cookiesFileInfo() (exists bool, size int64, modTime time.Time) {
+	fi, err := os.Stat(a.cookiesPath)
+	if err != nil || fi.IsDir() {
+		return false, 0, time.Time{}
+	}
+	return true, fi.Size(), fi.ModTime()
+}
+
+func (a *App) handleCookiesStatus(w http.ResponseWriter, _ *http.Request) {
+	exists, size, modTime := a.cookiesFileInfo()
+
+	resp := map[string]any{
+		"path":   a.cookiesPath,
+		"exists": exists,
+	}
+	if exists {
+		resp["size"] = size
+		resp["lastModified"] = modTime.UTC()
+	}
+
+	// Return cached validation if fresh (5 min and same mtime)
+	a.cookiesMu.Lock()
+	if a.cookiesValid != nil && time.Since(a.cookiesValidAt) < 5*time.Minute && a.cookiesValidMtime == modTime {
+		resp["valid"] = *a.cookiesValid
+		resp["validationMessage"] = a.cookiesValidMsg
+		resp["validatedAt"] = a.cookiesValidAt.UTC()
+	}
+	a.cookiesMu.Unlock()
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (a *App) handleCookiesUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxCookieSize)
+
+	var content []byte
+	var err error
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		file, _, fErr := r.FormFile("file")
+		if fErr != nil {
+			writeError(w, http.StatusBadRequest, "upload_failed", "no file in upload: "+fErr.Error())
+			return
+		}
+		defer file.Close()
+		content, err = io.ReadAll(file)
+	} else {
+		content, err = io.ReadAll(r.Body)
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read_failed", "failed to read body: "+err.Error())
+		return
+	}
+
+	// Reject empty
+	if len(strings.TrimSpace(string(content))) == 0 {
+		writeError(w, http.StatusBadRequest, "empty_cookies", "cookies file is empty")
+		return
+	}
+
+	// Basic Netscape format validation
+	text := string(content)
+	if !strings.Contains(text, ".youtube.com") {
+		writeError(w, http.StatusBadRequest, "invalid_format", "cookies file does not contain YouTube cookies — expected Netscape cookie format with .youtube.com entries")
+		return
+	}
+
+	// Atomic write: temp file then rename
+	dir := filepath.Dir(a.cookiesPath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", "cannot create directory: "+err.Error())
+		return
+	}
+	tmp, err := os.CreateTemp(dir, "cookies-*.tmp")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	tmp.Close()
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		os.Remove(tmpPath)
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	if err := os.Rename(tmpPath, a.cookiesPath); err != nil {
+		os.Remove(tmpPath)
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+
+	// Invalidate cached validation
+	a.cookiesMu.Lock()
+	a.cookiesValid = nil
+	a.cookiesMu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message": "Cookies saved",
+		"size":    len(content),
+	})
+}
+
+func (a *App) handleCookiesDelete(w http.ResponseWriter, _ *http.Request) {
+	os.Remove(a.cookiesPath) // Idempotent — ignore error if file missing
+	a.cookiesMu.Lock()
+	a.cookiesValid = nil
+	a.cookiesMu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleCookiesValidate(w http.ResponseWriter, _ *http.Request) {
+	exists, _, modTime := a.cookiesFileInfo()
+	if !exists {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"valid":   false,
+			"message": "No cookies file found",
+		})
+		return
+	}
+
+	err := ytdlp.ValidateCookies(a.cookiesPath)
+	valid := err == nil
+	msg := "Cookies are valid — YouTube authentication successful"
+	if !valid {
+		msg = err.Error()
+	}
+
+	// Cache the result
+	a.cookiesMu.Lock()
+	a.cookiesValid = &valid
+	a.cookiesValidMsg = msg
+	a.cookiesValidAt = time.Now()
+	a.cookiesValidMtime = modTime
+	a.cookiesMu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"valid":   valid,
+		"message": msg,
 	})
 }
 

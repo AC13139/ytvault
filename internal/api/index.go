@@ -146,6 +146,29 @@ func buildActionsCell(sourceID string, kind models.SourceKind) string {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
+func (a *App) cookieStatusForUI() (exists bool, sizeStr string, modTimeStr string, validStatus string, validClass string) {
+	ex, size, modTime := a.cookiesFileInfo()
+	if !ex {
+		return false, "", "", "Missing", "badge-failed"
+	}
+	sizeStr = fmt.Sprintf("%.1f KB", float64(size)/1024)
+	modTimeStr = modTime.UTC().Format("2006-01-02 15:04 UTC")
+
+	a.cookiesMu.Lock()
+	v := a.cookiesValid
+	msg := a.cookiesValidMsg
+	_ = msg
+	a.cookiesMu.Unlock()
+
+	if v == nil {
+		return true, sizeStr, modTimeStr, "Not tested", "badge-pending"
+	}
+	if *v {
+		return true, sizeStr, modTimeStr, "Valid", "badge-succeeded"
+	}
+	return true, sizeStr, modTimeStr, "Expired / Invalid", "badge-failed"
+}
+
 func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	sources := a.store.ListSources()
 	tasks := a.store.ListTasks()
@@ -278,6 +301,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		statusCell := statusBadge(string(t.Status))
 		if t.ErrorCode != "" {
 			statusCell += fmt.Sprintf(` <span class="src-meta">%s</span>`, html.EscapeString(t.ErrorCode))
+		}
+		if t.Status == models.TaskStatusFailed && strings.Contains(t.ErrorMessage, "Sign in to confirm") {
+			statusCell += ` <a href="#cookies" onclick="showTab('cookies')" style="color:#60a5fa;font-size:11px">→ Check Cookies</a>`
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
@@ -439,6 +465,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')">Media</button>
     <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')">Tasks</button>
     <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')">Schedules</button>
+    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')">Cookies %s</button>
   </div>
   <div class="nav-stats">
     <span class="stat-pill">%d sources</span>
@@ -517,6 +544,75 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <thead><tr><th>Source</th><th>Interval</th><th>Date filter</th><th>Auto-DL</th><th>State</th><th>Last run</th><th>Next run</th><th></th></tr></thead>
       <tbody>%s</tbody>
     </table></div>
+  </div>
+</div>
+
+<div id="tab-cookies" class="tab-content">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Cookie Status</span></div>
+    <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:14px">
+      <span class="src-meta">Status</span><span id="ck-status">%s</span>
+      <span class="src-meta">File path</span><span class="src-meta">%s</span>
+      <span class="src-meta">File size</span><span class="src-meta" id="ck-size">%s</span>
+      <span class="src-meta">Last modified</span><span class="src-meta" id="ck-mtime">%s</span>
+    </div>
+    <button class="btn-sm btn-blue" onclick="validateCookies()" id="ck-test-btn">Test Now</button>
+    <span id="ck-test-result" class="src-meta" style="margin-left:8px"></span>
+    <p style="color:#64748b;font-size:11px;margin-top:10px">Cookies contain your YouTube session. Only upload on a trusted network.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Upload Cookies</span></div>
+    <p class="src-meta" style="margin-bottom:10px">Upload a <code>cookies.txt</code> file (Netscape format) or paste cookie content below.</p>
+    <div style="margin-bottom:10px">
+      <label style="display:inline-block;padding:6px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;cursor:pointer;font-size:13px;color:#93c5fd">
+        Choose File <input type="file" id="ck-file" accept=".txt" style="display:none" onchange="document.getElementById('ck-filename').textContent=this.files[0]?.name||''">
+      </label>
+      <span id="ck-filename" class="src-meta" style="margin-left:8px"></span>
+    </div>
+    <div style="margin-bottom:10px">
+      <label>Or paste content:</label>
+      <textarea id="ck-paste" rows="6" style="width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;color:#e5e7eb;font-family:monospace;font-size:12px;resize:vertical" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."></textarea>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn-primary" onclick="uploadCookies()">Save Cookies</button>
+      <button class="btn-sm btn-orange" onclick="deleteCookies(this)">Delete Cookies</button>
+      <span id="ck-upload-status" class="src-meta"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">How to Get Cookies</span></div>
+    <div style="font-size:13px;line-height:1.7">
+      <details style="margin-bottom:10px">
+        <summary style="cursor:pointer;color:#93c5fd;font-weight:600">Chrome / Edge / Brave / Arc (Chromium browsers)</summary>
+        <ol style="padding-left:20px;margin-top:6px;color:#cbd5e1">
+          <li>Install <a href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc" target="_blank" style="color:#60a5fa">Get cookies.txt LOCALLY</a> extension</li>
+          <li>Go to <a href="https://www.youtube.com" target="_blank" style="color:#60a5fa">youtube.com</a> and make sure you are logged in</li>
+          <li>Click the extension icon → Export → save or copy the content</li>
+          <li>Upload the file or paste the content above</li>
+        </ol>
+      </details>
+      <details style="margin-bottom:10px">
+        <summary style="cursor:pointer;color:#93c5fd;font-weight:600">Firefox</summary>
+        <ol style="padding-left:20px;margin-top:6px;color:#cbd5e1">
+          <li>Install <a href="https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/" target="_blank" style="color:#60a5fa">cookies.txt</a> add-on</li>
+          <li>Go to <a href="https://www.youtube.com" target="_blank" style="color:#60a5fa">youtube.com</a> and make sure you are logged in</li>
+          <li>Click the add-on → "Current Site" → save or copy the content</li>
+          <li>Upload the file or paste the content above</li>
+        </ol>
+      </details>
+      <details style="margin-bottom:10px">
+        <summary style="cursor:pointer;color:#93c5fd;font-weight:600">Safari (macOS)</summary>
+        <ol style="padding-left:20px;margin-top:6px;color:#cbd5e1">
+          <li>Install yt-dlp locally: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">brew install yt-dlp</code></li>
+          <li>Run: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com</code></li>
+          <li>Upload the generated <code>cookies.txt</code> file above</li>
+        </ol>
+      </details>
+      <p class="src-meta" style="margin-top:8px">For more details see the <a href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp" target="_blank" style="color:#60a5fa">yt-dlp cookie guide</a>.</p>
+      <p class="src-meta" style="margin-top:4px">Cookies expire over time (usually weeks to months). If downloads start failing, re-export a fresh cookies file.</p>
+    </div>
   </div>
 </div>
 
@@ -662,9 +758,65 @@ function viewMedia(sourceId){
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
 }
+async function validateCookies(){
+  const btn=document.getElementById('ck-test-btn');
+  const res_el=document.getElementById('ck-test-result');
+  btn.disabled=true;btn.textContent='Testing...';res_el.textContent='';
+  try{
+    const res=await fetch('/api/v1/cookies/validate',{method:'POST'});
+    const data=await res.json();
+    if(data.valid){
+      res_el.textContent='Valid!';res_el.style.color='#86efac';
+      toast('Cookies are valid','ok');
+    }else{
+      res_el.textContent='Invalid: '+(data.message||'unknown');res_el.style.color='#fca5a5';
+      toast('Cookies invalid','err');
+    }
+    setTimeout(()=>location.reload(),2000);
+  }catch(e){res_el.textContent='Network error';res_el.style.color='#fca5a5';}
+  btn.disabled=false;btn.textContent='Test Now';
+}
+async function uploadCookies(){
+  const fileInput=document.getElementById('ck-file');
+  const paste=document.getElementById('ck-paste').value.trim();
+  const st=document.getElementById('ck-upload-status');
+  let body,ct;
+  if(fileInput.files.length>0){
+    body=new FormData();body.append('file',fileInput.files[0]);ct=undefined;
+  }else if(paste){
+    body=paste;ct='text/plain';
+  }else{
+    st.textContent='Choose a file or paste content';st.style.color='#fca5a5';return;
+  }
+  st.textContent='Uploading...';st.style.color='#94a3b8';
+  try{
+    const opts={method:'POST',body};
+    if(ct)opts.headers={'Content-Type':ct};
+    const res=await fetch('/api/v1/cookies',opts);
+    const data=await res.json();
+    if(res.ok){
+      toast('Cookies saved','ok');
+      setTimeout(()=>location.reload(),400);
+    }else{
+      st.textContent=data.error?.message||'Upload failed';st.style.color='#fca5a5';
+      toast('Failed: '+(data.error?.message||'unknown'),'err');
+    }
+  }catch(e){st.textContent='Network error';st.style.color='#fca5a5';toast('Network error','err');}
+}
+function deleteCookies(btn){
+  if(btn.dataset.confirm!=='1'){
+    btn.dataset.confirm='1';btn.textContent='Confirm?';btn.className='btn-sm btn-red';
+    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Delete Cookies';btn.className='btn-sm btn-orange';}},3000);
+    return;
+  }
+  fetch('/api/v1/cookies',{method:'DELETE'}).then(res=>{
+    if(res.ok||res.status===204){toast('Cookies deleted','ok');setTimeout(()=>location.reload(),300);}
+    else{toast('Delete failed','err');}
+  }).catch(()=>toast('Network error','err'));
+}
 window.onload=function(){
   const h=location.hash.slice(1);
-  showTab(['sources','media','tasks','schedules'].includes(h)?h:'sources');
+  showTab(['sources','media','tasks','schedules','cookies'].includes(h)?h:'sources');
   %s
 };
 </script>
@@ -672,13 +824,25 @@ window.onload=function(){
 
 	addDateAfterOpts := buildDateAfterOptions("")
 
+	// Cookie status for nav badge and cookies tab
+	ckExists, ckSize, ckMtime, ckStatus, ckClass := a.cookieStatusForUI()
+	ckNavBadge := fmt.Sprintf(`<span class="badge %s" style="margin-left:4px;font-size:9px">%s</span>`, ckClass, html.EscapeString(ckStatus))
+	ckPathDisplay := html.EscapeString(a.cookiesPath)
+	ckStatusBadge := fmt.Sprintf(`<span class="badge %s">%s</span>`, ckClass, html.EscapeString(ckStatus))
+	if !ckExists {
+		ckSize = "—"
+		ckMtime = "—"
+	}
+
 	_, _ = w.Write([]byte(fmt.Sprintf(page,
-		len(sources), len(allMedia), len(tasks), len(schedules), // nav stats
-		addDateAfterOpts,                                          // add-source date filter options
-		len(sources), strings.Join(sourceRows, ""),               // sources tab: title, rows
+		ckNavBadge,                                                       // cookies nav badge
+		len(sources), len(allMedia), len(tasks), len(schedules),         // nav stats
+		addDateAfterOpts,                                                // add-source date filter options
+		len(sources), strings.Join(sourceRows, ""),                      // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
 		len(tasks), strings.Join(taskRows, ""),                         // tasks tab
 		len(schedules), strings.Join(schedRows, ""),                    // schedules tab
+		ckStatusBadge, ckPathDisplay, ckSize, ckMtime,                  // cookies tab: status, path, size, mtime
 		autoRefreshJS,                                                   // auto-refresh if running tasks
 	)))
 }

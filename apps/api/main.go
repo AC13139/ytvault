@@ -14,8 +14,9 @@ func main() {
 	addr := getenv("YTVAULT_ADDR", ":8080")
 	dataPath := getenv("YTVAULT_DATA_PATH", "./data/state.json")
 	downloadDir := getenv("YTVAULT_DOWNLOAD_PATH", "./data/downloads")
+	cookiesPath := getenv("YTVAULT_COOKIES_PATH", "./data/cookies.txt")
 
-	app, err := api.NewApp(dataPath, downloadDir)
+	app, err := api.NewApp(dataPath, downloadDir, cookiesPath)
 	if err != nil {
 		log.Fatalf("init app: %v", err)
 	}
