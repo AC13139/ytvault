@@ -43,6 +43,19 @@ If the build fails with `DeadlineExceeded` or `context deadline exceeded` when p
 
 If you are on a VPN, try disabling it for the initial build.
 
+### YouTube cookies (required)
+
+YouTube blocks automated downloads with bot detection. You must provide a cookies file exported from a browser where you are logged into YouTube.
+
+1. Install a browser extension to export cookies in **Netscape format** (e.g. [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) for Chrome).
+2. Go to youtube.com (make sure you are logged in), export cookies, and save the file as `cookies.txt` in the ytvault project root.
+3. Rebuild and restart:
+   ```bash
+   docker compose up --build -d
+   ```
+
+The `docker-compose.yml` mounts `./cookies.txt` into the container at `/data/cookies.txt` (read-only). If the file does not exist, yt-dlp will run without cookies and may fail on some videos.
+
 ---
 
 ## Running Locally (without Docker)
@@ -75,6 +88,7 @@ All settings are environment variables:
 | `YTVAULT_ADDR` | `:8080` | Listen address |
 | `YTVAULT_DATA_PATH` | `./data/state.json` | State file path |
 | `YTVAULT_DOWNLOAD_PATH` | `./data/downloads` | Download directory |
+| `YTVAULT_COOKIES_PATH` | _(empty)_ | Path to Netscape-format cookies file for yt-dlp |
 
 **CLI:**
 

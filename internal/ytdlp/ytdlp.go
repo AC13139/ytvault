@@ -4,10 +4,24 @@ package ytdlp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// cookiesPath returns the cookies file path from YTVAULT_COOKIES_PATH if set
+// and the file exists.
+func cookiesPath() string {
+	p := os.Getenv("YTVAULT_COOKIES_PATH")
+	if p == "" {
+		return ""
+	}
+	if _, err := os.Stat(p); err != nil {
+		return ""
+	}
+	return p
+}
 
 // VideoInfo represents a single video returned by yt-dlp.
 type VideoInfo struct {
@@ -53,6 +67,9 @@ func (p probeResult) duration() int {
 // Returns the channel/playlist title and the list of videos found.
 func Index(url, dateAfter string) (string, []VideoInfo, error) {
 	args := []string{"--flat-playlist", "-J", "--no-warnings"}
+	if cp := cookiesPath(); cp != "" {
+		args = append(args, "--cookies", cp)
+	}
 	if dateAfter != "" {
 		args = append(args, "--dateafter", dateAfter)
 	}
@@ -102,14 +119,18 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 // Returns the path of the downloaded file.
 func Download(videoURL, outputDir string) (string, error) {
 	template := filepath.Join(outputDir, "%(uploader,channel,id)s", "%(title)s [%(id)s].%(ext)s")
-	cmd := exec.Command("yt-dlp",
+	args := []string{
 		"-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
 		"--merge-output-format", "mp4",
 		"--no-warnings",
 		"--print", "after_move:filepath",
 		"-o", template,
-		videoURL,
-	)
+	}
+	if cp := cookiesPath(); cp != "" {
+		args = append(args, "--cookies", cp)
+	}
+	args = append(args, videoURL)
+	cmd := exec.Command("yt-dlp", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

@@ -5,10 +5,12 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
+      - ./cookies.txt:/data/cookies.txt:ro
     environment:
       YTVAULT_ADDR: ":8080"
       YTVAULT_DATA_PATH: /data/state.json
       YTVAULT_DOWNLOAD_PATH: /data/downloads
+      YTVAULT_COOKIES_PATH: /data/cookies.txt
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
