@@ -141,7 +141,8 @@ func TestRunTaskRejectsNonQueuedTerminalTasks(t *testing.T) {
 	})
 
 	t.Run("failed task cannot run again", func(t *testing.T) {
-		_, task, err := s.CreateSource(models.SourceKindVideo, profile, "")
+		profile2, _ := yt.NormalizeSource("https://www.youtube.com/watch?v=def456", models.SourceKindVideo)
+		_, task, err := s.CreateSource(models.SourceKindVideo, profile2, "")
 		if err != nil {
 			t.Fatal(err)
 		}

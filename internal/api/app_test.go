@@ -96,10 +96,7 @@ func TestIndexShowsSourceProfileDetails(t *testing.T) {
 	for _, want := range []string{
 		"Channel @SpeechLab-m7o",
 		"https://www.youtube.com/@SpeechLab-m7o",
-		"http://www.youtube.com/@SpeechLab-m7o",
-		"@handle",
-		"validated",
-		"Live indexing/download",
+		"channel",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("index missing %q", want)

@@ -67,7 +67,10 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/tasks", a.handleListTasks)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/run", a.handleRunTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/start", a.handleStartTask)
+	mux.HandleFunc("DELETE /api/v1/sources/{id}", a.handleDeleteSource)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
+	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
+	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
 	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
@@ -314,6 +317,29 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
 		},
 	})
+}
+
+func (a *App) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := a.store.DeleteSource(id); err != nil {
+		writeError(w, http.StatusNotFound, "delete_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := a.store.DeleteTask(id); err != nil {
+		writeError(w, http.StatusBadRequest, "delete_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleDeleteCompletedTasks(w http.ResponseWriter, _ *http.Request) {
+	removed := a.store.DeleteCompletedTasks()
+	writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
 }
 
 // ── Cookie handlers ──────────────────────────────────────────────────────────

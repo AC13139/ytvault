@@ -115,9 +115,75 @@ func (s *Store) GetSource(id string) (models.Source, bool) {
 	return models.Source{}, false
 }
 
+func (s *Store) FindSourceByURL(normalizedURL string) (models.Source, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, src := range s.state.Sources {
+		if src.URL == normalizedURL {
+			return src, true
+		}
+	}
+	return models.Source{}, false
+}
+
+func (s *Store) DeleteSource(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := false
+	for i, src := range s.state.Sources {
+		if src.ID == id {
+			s.state.Sources = append(s.state.Sources[:i], s.state.Sources[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("source %s not found", id)
+	}
+
+	// Cascade: remove related media items
+	var media []models.MediaItem
+	for _, m := range s.state.MediaItems {
+		if m.SourceID != id {
+			media = append(media, m)
+		}
+	}
+	s.state.MediaItems = media
+
+	// Cascade: remove related tasks (only completed ones; keep running/queued)
+	var tasks []models.Task
+	for _, t := range s.state.Tasks {
+		if t.EntityID == id && (t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed) {
+			continue
+		}
+		tasks = append(tasks, t)
+	}
+	s.state.Tasks = tasks
+
+	// Cascade: remove schedule
+	var scheds []models.Schedule
+	for _, sc := range s.state.Schedules {
+		if sc.SourceID != id {
+			scheds = append(scheds, sc)
+		}
+	}
+	s.state.Schedules = scheds
+
+	return s.saveLocked()
+}
+
 func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, dateAfter string) (models.Source, models.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Prevent duplicate sources with the same normalized URL
+	for _, existing := range s.state.Sources {
+		if existing.URL == profile.NormalizedURL {
+			return models.Source{}, models.Task{}, fmt.Errorf("source already exists: %s (%s)", existing.Title, existing.URL)
+		}
+	}
+
 	now := time.Now().UTC()
 	src := models.Source{
 		ID:                 fmt.Sprintf("src_%d", s.nextID),
@@ -517,6 +583,42 @@ func (s *Store) CreateIndexTask(sourceID string, autoDownload bool, dateAfter st
 		return models.Task{}, err
 	}
 	return task, nil
+}
+
+// DeleteTask removes a single completed task.
+func (s *Store) DeleteTask(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, t := range s.state.Tasks {
+		if t.ID == id {
+			if t.Status == models.TaskStatusQueued || t.Status == models.TaskStatusRunning {
+				return fmt.Errorf("cannot delete %s task %s", t.Status, id)
+			}
+			s.state.Tasks = append(s.state.Tasks[:i], s.state.Tasks[i+1:]...)
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("task %s not found", id)
+}
+
+// DeleteCompletedTasks removes all succeeded and failed tasks.
+func (s *Store) DeleteCompletedTasks() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var kept []models.Task
+	removed := 0
+	for _, t := range s.state.Tasks {
+		if t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed {
+			removed++
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	if removed > 0 {
+		s.state.Tasks = kept
+		_ = s.saveLocked()
+	}
+	return removed
 }
 
 // ── Schedules ─────────────────────────────────────────────────────────────────

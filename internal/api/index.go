@@ -126,21 +126,25 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 
 func buildActionsCell(sourceID string, kind models.SourceKind) string {
 	sid := html.EscapeString(sourceID)
+	deleteBtn := fmt.Sprintf(
+		` <button class="btn-sm btn-orange" onclick="deleteSource(this,'%s')">Remove</button>`,
+		sid,
+	)
 	if kind == models.SourceKindVideo {
-		// Single video: simple refresh, no date filter
 		return fmt.Sprintf(
-			`<button class="btn-sm btn-gray" onclick="scanSource('%s','')">Refresh</button>`,
-			sid,
+			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
+				`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>scanSource('%s',''))">Refresh</button>%s`+
+				`</div>`,
+			sid, deleteBtn,
 		)
 	}
-	// Channel or playlist: date filter + "Scan for new videos"
 	return fmt.Sprintf(
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<button class="btn-sm btn-gray" onclick="scanSource('%s',document.getElementById('scan-date-%s').value)">Scan</button>`+
+			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>scanSource('%s',document.getElementById('scan-date-%s').value))">Scan</button>%s`+
 			`</div>`,
 		sid, buildDateAfterOptions(""),
-		sid, sid,
+		sid, sid, deleteBtn,
 	)
 }
 
@@ -196,20 +200,15 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 
-		// Detail cell
+		// Detail cell — show only title, kind badge, and URL as clickable link
 		detail := fmt.Sprintf(
 			`<div class="src-title">%s</div>`+
-				`<div class="tags">%s%s%s</div>`+
-				`<div class="src-meta">%s</div>`+
-				`<div class="src-meta">%s</div>`+
-				`<div class="src-meta">%s</div>`+
-				`<div class="src-meta">%s</div>`,
+				`<div class="tags">%s</div>`+
+				`<div class="src-meta"><a href="%s" target="_blank" style="color:#60a5fa">%s</a></div>`,
 			html.EscapeString(s.Title),
-			tag(string(s.Kind)), tag(s.PathLabel), tag(s.IntakeStage),
+			tag(string(s.Kind)),
 			html.EscapeString(s.URL),
-			html.EscapeString(s.InputURL),
-			html.EscapeString(s.ValidationSummary),
-			html.EscapeString(s.NextAction),
+			html.EscapeString(s.URL),
 		)
 
 		// Media cell
@@ -225,7 +224,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		dlBtn := ""
 		if mediaCount > 0 {
 			dlBtn = fmt.Sprintf(
-				` <button class="btn-sm btn-green" onclick="downloadAll('%s')">Download all</button>`,
+				` <button class="btn-sm btn-green" onclick="withLoading(this,()=>downloadAll('%s'))">Download all</button>`,
 				html.EscapeString(s.ID),
 			)
 		}
@@ -282,34 +281,60 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
+	// Build lookup maps for human-readable entity names
+	sourceNames := map[string]string{}
+	for _, src := range sources {
+		sourceNames[src.ID] = src.Title
+	}
+	mediaNames := map[string]string{}
+	for _, m := range allMedia {
+		mediaNames[m.ID] = m.Title
+	}
+
 	var taskRows []string
 	for _, t := range tasks {
+		// Human-readable type label
+		typeLabel := "Index"
+		if t.Type == "download" {
+			typeLabel = "Download"
+		}
+
+		// Resolve entity to human name
+		entityName := t.EntityID
+		if t.EntityType == "source" {
+			if name, ok := sourceNames[t.EntityID]; ok && name != "" {
+				entityName = name
+			}
+		} else if t.EntityType == "media" {
+			if name, ok := mediaNames[t.EntityID]; ok && name != "" {
+				entityName = name
+			}
+		}
+
+		// Action buttons
 		action := ""
 		if t.Status == models.TaskStatusQueued {
 			action = fmt.Sprintf(
-				`<button class="btn-sm btn-blue" onclick="startTask('%s')">Start</button>`,
+				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>startTask('%s'))">Start</button>`,
 				html.EscapeString(t.ID),
 			)
 		}
-		typeLabel := html.EscapeString(string(t.Type))
-		if t.AutoDownload {
-			typeLabel += ` <span class="tag">auto-dl</span>`
+		if t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed {
+			action += fmt.Sprintf(
+				` <button class="btn-sm btn-gray" onclick="dismissTask(this,'%s')">Dismiss</button>`,
+				html.EscapeString(t.ID),
+			)
 		}
-		if t.DateAfter != "" {
-			typeLabel += fmt.Sprintf(` <span class="tag">%s</span>`, html.EscapeString(t.DateAfter))
-		}
+
 		statusCell := statusBadge(string(t.Status))
-		if t.ErrorCode != "" {
-			statusCell += fmt.Sprintf(` <span class="src-meta">%s</span>`, html.EscapeString(t.ErrorCode))
-		}
 		if t.Status == models.TaskStatusFailed && strings.Contains(t.ErrorMessage, "Sign in to confirm") {
 			statusCell += ` <a href="#cookies" onclick="showTab('cookies')" style="color:#60a5fa;font-size:11px">→ Check Cookies</a>`
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
-			`<tr><td>%s</td><td class="src-meta">%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
-			typeLabel,
-			html.EscapeString(t.EntityID),
+			`<tr><td>%s</td><td>%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			html.EscapeString(typeLabel),
+			html.EscapeString(entityName),
 			statusCell,
 			createdAt,
 			action,
@@ -496,7 +521,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
-      <button class="btn-primary" onclick="submitForm()">Add Source</button>
+      <button class="btn-primary" onclick="withLoading(this,submitForm)">Add Source</button>
       <span id="add-status" class="src-meta"></span>
     </div>
   </div>
@@ -529,7 +554,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <div id="tab-tasks" class="tab-content">
   <div class="card">
-    <div class="card-header"><span class="card-title">Tasks (%d)</span></div>
+    <div class="card-header"><span class="card-title">Tasks (%d)</span><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Entity</th><th>Status</th><th>Created</th><th></th></tr></thead>
       <tbody>%s</tbody>
@@ -632,6 +657,11 @@ function toast(msg,type){
   d.textContent=msg;
   document.getElementById('toast').appendChild(d);
   setTimeout(()=>d.remove(),4000);
+}
+async function withLoading(btn,fn){
+  const orig=btn.textContent;
+  btn.disabled=true;btn.style.opacity='0.6';btn.textContent=orig+'…';
+  try{await fn();}finally{btn.disabled=false;btn.style.opacity='';btn.textContent=orig;}
 }
 function onKindChange(kind){
   const wrap=document.getElementById('add-dateafter-wrap');
@@ -757,6 +787,31 @@ function viewMedia(sourceId){
   showTab('media');
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
+}
+function deleteSource(btn,sourceId){
+  if(btn.dataset.confirm!=='1'){
+    btn.dataset.confirm='1';btn.textContent='Confirm?';btn.className='btn-sm btn-red';
+    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Remove';btn.className='btn-sm btn-orange';}},3000);
+    return;
+  }
+  btn.disabled=true;btn.textContent='Removing…';
+  fetch('/api/v1/sources/'+sourceId,{method:'DELETE'}).then(res=>{
+    if(res.ok||res.status===204){toast('Source removed','ok');setTimeout(()=>location.reload(),300);}
+    else{res.json().then(d=>toast('Error: '+(d.error?.message||''),'err'));btn.disabled=false;btn.textContent='Remove';btn.dataset.confirm='0';}
+  }).catch(()=>{toast('Network error','err');btn.disabled=false;});
+}
+function dismissTask(btn,taskId){
+  btn.disabled=true;btn.textContent='…';
+  fetch('/api/v1/tasks/'+taskId,{method:'DELETE'}).then(res=>{
+    if(res.ok||res.status===204){btn.closest('tr').remove();}
+    else{btn.disabled=false;btn.textContent='Dismiss';toast('Failed to dismiss','err');}
+  }).catch(()=>{btn.disabled=false;btn.textContent='Dismiss';});
+}
+async function clearCompletedTasks(){
+  const res=await fetch('/api/v1/tasks',{method:'DELETE'});
+  const data=await res.json();
+  toast('Cleared '+(data.removed||0)+' completed task(s)','ok');
+  setTimeout(()=>location.reload(),300);
 }
 async function validateCookies(){
   const btn=document.getElementById('ck-test-btn');
