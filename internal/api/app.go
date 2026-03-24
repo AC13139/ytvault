@@ -412,6 +412,10 @@ func (a *App) handleCookiesUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
 		return
 	}
+	// Remove existing path if it's a stale directory (Docker bind-mount artifact)
+	if fi, err := os.Stat(a.cookiesPath); err == nil && fi.IsDir() {
+		os.RemoveAll(a.cookiesPath)
+	}
 	if err := os.Rename(tmpPath, a.cookiesPath); err != nil {
 		os.Remove(tmpPath)
 		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
