@@ -5,7 +5,6 @@ services:
       - "8080:8080"
     volumes:
       - ./data:/data
-      - ./cookies.txt:/data/cookies.txt:ro
     environment:
       YTVAULT_ADDR: ":8080"
       YTVAULT_DATA_PATH: /data/state.json

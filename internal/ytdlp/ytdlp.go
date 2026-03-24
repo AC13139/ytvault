@@ -17,7 +17,8 @@ func cookiesPath() string {
 	if p == "" {
 		return ""
 	}
-	if _, err := os.Stat(p); err != nil {
+	fi, err := os.Stat(p)
+	if err != nil || fi.IsDir() {
 		return ""
 	}
 	return p
