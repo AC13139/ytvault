@@ -16,3 +16,4 @@ data/
 tmp/
 *.pid
 *.out
+CLAUDE.md
