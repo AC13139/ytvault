@@ -27,7 +27,11 @@ func tag(text string) string {
 
 // dateAfterPresets lists the yt-dlp --dateafter presets shown in the UI.
 var dateAfterPresets = []struct{ v, l string }{
-	{"", "All time"},
+	{"", "Lifetime"},
+	{"now-1days", "Last day"},
+	{"now-3days", "Last 3 days"},
+	{"now-7days", "Last week"},
+	{"now-14days", "Last 2 weeks"},
 	{"now-30days", "Last 30 days"},
 	{"now-90days", "Last 3 months"},
 	{"now-365days", "Last year"},
@@ -124,12 +128,19 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 
 // ── Actions cell ──────────────────────────────────────────────────────────────
 
-func buildActionsCell(sourceID string, kind models.SourceKind) string {
+func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool) string {
 	sid := html.EscapeString(sourceID)
 	deleteBtn := fmt.Sprintf(
 		` <button class="btn-sm btn-orange" onclick="deleteSource(this,'%s')">Remove</button>`,
 		sid,
 	)
+	schedBtn := ""
+	if kind != models.SourceKindVideo && !hasSchedule {
+		schedBtn = fmt.Sprintf(
+			` <button class="btn-sm btn-green" onclick="withLoading(this,()=>quickSchedule('%s'))">Schedule</button>`,
+			sid,
+		)
+	}
 	if kind == models.SourceKindVideo {
 		return fmt.Sprintf(
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
@@ -141,10 +152,10 @@ func buildActionsCell(sourceID string, kind models.SourceKind) string {
 	return fmt.Sprintf(
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s`+
+			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s%s`+
 			`</div>`,
 		sid, buildDateAfterOptions(""),
-		sid, sid, deleteBtn,
+		sid, sid, schedBtn, deleteBtn,
 	)
 }
 
@@ -226,7 +237,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
 			detail,
 			mediaCell,
-			buildActionsCell(s.ID, s.Kind),
+			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }()),
 		))
 	}
 	if len(sourceRows) == 0 {
@@ -373,10 +384,6 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		if sched.Enabled {
 			state = statusBadge("enabled")
 		}
-		autoLabel := "—"
-		if sched.AutoDownload {
-			autoLabel = "yes"
-		}
 		dateLabel := "all time"
 		if sched.DateAfter != "" {
 			// Map the raw yt-dlp value to a human label
@@ -395,24 +402,42 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			lastRun = sched.LastRunAt.UTC().Format("2006-01-02 15:04")
 		}
 		nextRun := sched.NextRunAt.UTC().Format("2006-01-02 15:04")
-		removeBtn := fmt.Sprintf(
-			`<button class="btn-sm btn-orange" onclick="removeSchedule(this,'%s')">Remove</button>`,
-			html.EscapeString(sched.SourceID),
+		sid := html.EscapeString(sched.SourceID)
+		enableLabel := "Pause"
+		enableClass := "btn-gray"
+		if !sched.Enabled {
+			enableLabel = "Start"
+			enableClass = "btn-green"
+		}
+		autoDLChecked := ""
+		if sched.AutoDownload {
+			autoDLChecked = " checked"
+		}
+		actions := fmt.Sprintf(
+			`<div style="display:flex;gap:4px;flex-wrap:wrap">`+
+				`<button class="btn-sm %s" onclick="withLoading(this,()=>toggleSchedule('%s',%v))">%s</button>`+
+				` <button class="btn-sm btn-blue" onclick="withLoading(this,()=>saveSchedule('%s'))">Save</button>`+
+				` <button class="btn-sm btn-orange" onclick="removeSchedule(this,'%s')">Remove</button>`+
+				`</div>`,
+			enableClass, sid, !sched.Enabled, enableLabel,
+			sid,
+			sid,
 		)
 		schedRows = append(schedRows, fmt.Sprintf(
-			`<tr><td>%s</td><td class="src-meta">Every %dh</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
-			html.EscapeString(srcTitle),
-			sched.IntervalHours,
-			html.EscapeString(dateLabel),
-			autoLabel,
-			state,
-			lastRun,
-			nextRun,
-			removeBtn,
+			`<tr><td title="%s">%s</td>`+
+				`<td><select id="sched-iv-%s" style="width:auto;padding:3px;font-size:12px">%s</select></td>`+
+				`<td><select id="sched-da-%s" style="width:auto;padding:3px;font-size:12px">%s</select></td>`+
+				`<td><input type="checkbox" id="sched-ad-%s"%s style="width:auto;margin:0"></td>`+
+				`<td>%s</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			html.EscapeString(srcTitle), html.EscapeString(srcTitle),
+			sid, buildIntervalOptions(sched.IntervalHours),
+			sid, buildDateAfterOptions(sched.DateAfter),
+			sid, autoDLChecked,
+			state, lastRun, nextRun, actions,
 		))
 	}
 	if len(schedRows) == 0 {
-		schedRows = []string{`<tr><td colspan="8" class="empty">No schedules — set one from the Sources tab</td></tr>`}
+		schedRows = []string{`<tr><td colspan="8" class="empty">No schedules — use the "Schedule" button on a channel or playlist source</td></tr>`}
 	}
 
 	// Check if any task is running (for auto-refresh)
@@ -615,7 +640,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <div id="tab-tasks" class="tab-content">
   <div class="card">
-    <div class="card-header"><span class="card-title">Tasks (%d)</span><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div>
+    <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><button class="btn-sm btn-orange" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Entity</th><th>Status</th><th>Created</th><th></th></tr></thead>
       <tbody id="tasks-tbody">%s</tbody>
@@ -914,6 +939,24 @@ async function downloadAll(sourceId){
     }
   }catch(e){toast('Network error','err');}
 }
+async function toggleSchedule(sourceId,enabled){
+  const iv=document.getElementById('sched-iv-'+sourceId);
+  const da=document.getElementById('sched-da-'+sourceId);
+  const ad=document.getElementById('sched-ad-'+sourceId);
+  const body={intervalHours:parseInt(iv?.value||24),enabled:enabled,autoDownload:ad?.checked||false,dateAfter:da?.value||''};
+  const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast(enabled?'Schedule started':'Schedule paused','ok');setTimeout(()=>location.reload(),300);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
+}
+async function saveSchedule(sourceId){
+  const iv=document.getElementById('sched-iv-'+sourceId);
+  const da=document.getElementById('sched-da-'+sourceId);
+  const ad=document.getElementById('sched-ad-'+sourceId);
+  const body={intervalHours:parseInt(iv?.value||24),enabled:true,autoDownload:ad?.checked||false,dateAfter:da?.value||''};
+  const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast('Schedule saved','ok');setTimeout(()=>location.reload(),300);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
+}
 async function setSchedule(sourceId){
   const iv=document.getElementById('sched-interval-'+sourceId);
   const ad=document.getElementById('sched-autodl-'+sourceId);
@@ -976,7 +1019,9 @@ async function downloadMedia(mediaId){
   else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
 async function downloadAllPending(){
-  const res=await fetch('/api/v1/media/download-all-pending',{method:'POST'});
+  const filter=sessionStorage.getItem('mediaFilter')||'';
+  const qs=filter?'?source='+encodeURIComponent(filter):'';
+  const res=await fetch('/api/v1/media/download-all-pending'+qs,{method:'POST'});
   const data=await res.json();
   if(res.ok||res.status===202){
     toast('Started '+(data.started||0)+' of '+(data.total||0)+' download(s)','ok');
@@ -1028,6 +1073,24 @@ function dismissTask(btn,taskId){
     if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
     else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
+}
+async function quickSchedule(sourceId){
+  const body={intervalHours:24,enabled:true,autoDownload:true,dateAfter:''};
+  const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast('Scheduled: every 24h with auto-download','ok');setTimeout(()=>location.reload(),300);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
+}
+async function stopRunningTasks(){
+  const res=await fetch('/api/v1/tasks/stop-all',{method:'POST'});
+  const data=await res.json();
+  toast('Stopped '+(data.stopped||0)+' task(s)','ok');
+  setTimeout(()=>location.reload(),1000);
+}
+async function retryAllFailed(){
+  const res=await fetch('/api/v1/tasks/retry-failed',{method:'POST'});
+  const data=await res.json();
+  toast('Retried '+(data.retried||0)+' task(s)','ok');
+  if(data.retried>0)setTimeout(()=>location.reload(),400);
 }
 async function clearCompletedTasks(){
   const res=await fetch('/api/v1/tasks',{method:'DELETE'});

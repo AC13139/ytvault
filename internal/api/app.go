@@ -77,6 +77,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", a.handleCancelTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
+	mux.HandleFunc("POST /api/v1/tasks/stop-all", a.handleStopAllRunning)
+	mux.HandleFunc("POST /api/v1/tasks/retry-failed", a.handleRetryAllFailed)
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
 	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
@@ -380,12 +382,16 @@ func (a *App) handleDownloadMedia(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
 }
 
-func (a *App) handleDownloadAllPending(w http.ResponseWriter, _ *http.Request) {
-	// Find all pending media items across all sources
+func (a *App) handleDownloadAllPending(w http.ResponseWriter, r *http.Request) {
+	// Optional source filter
+	sourceFilter := r.URL.Query().Get("source")
 	sources := a.store.ListSources()
 	started := 0
 	total := 0
 	for _, src := range sources {
+		if sourceFilter != "" && src.ID != sourceFilter {
+			continue
+		}
 		tasks, err := a.store.CreateDownloadTasksForSource(src.ID)
 		if err != nil {
 			continue
@@ -453,6 +459,43 @@ func (a *App) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleStopAllRunning(w http.ResponseWriter, _ *http.Request) {
+	tasks := a.store.ListTasks()
+	stopped := 0
+	for _, t := range tasks {
+		if t.Status == models.TaskStatusRunning {
+			if err := a.worker.CancelTask(t.ID); err == nil {
+				stopped++
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stopped": stopped})
+}
+
+func (a *App) handleRetryAllFailed(w http.ResponseWriter, _ *http.Request) {
+	tasks := a.store.ListTasks()
+	retried := 0
+	for _, t := range tasks {
+		if t.Status != models.TaskStatusFailed {
+			continue
+		}
+		if t.Type == "download" && t.EntityType == "media" {
+			// Reset media to pending and create new download task
+			if err := a.store.RetryMediaItem(t.EntityID); err != nil {
+				continue
+			}
+			newTask, err := a.store.CreateDownloadTask(t.EntityID)
+			if err != nil {
+				continue
+			}
+			if _, err := a.worker.StartTask(newTask.ID); err == nil {
+				retried++
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"retried": retried})
 }
 
 func (a *App) handleDeleteCompletedTasks(w http.ResponseWriter, _ *http.Request) {
