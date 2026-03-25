@@ -522,6 +522,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <button class="btn-primary" onclick="withLoading(this,submitForm)">Add Source</button>
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+        <input type="checkbox" id="auto-download" style="width:auto;margin:0" checked> Auto-download after scan
+      </label>
       <span id="add-status" class="src-meta"></span>
     </div>
   </div>
@@ -676,7 +679,8 @@ async function submitForm(){
   if(!url){st.textContent='Please enter a URL';st.style.color='#fca5a5';return;}
   st.textContent='Adding...';st.style.color='#94a3b8';
   try{
-    const body={kind,url};
+    const autoDownload=document.getElementById('auto-download').checked;
+    const body={kind,url,autoDownload};
     if(dateAfter)body.dateAfter=dateAfter;
     const res=await fetch('/api/v1/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();

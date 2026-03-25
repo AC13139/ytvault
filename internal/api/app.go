@@ -82,9 +82,10 @@ func (a *App) Routes() http.Handler {
 // ── Source handlers ───────────────────────────────────────────────────────────
 
 type createSourceRequest struct {
-	Kind      string `json:"kind"`
-	URL       string `json:"url"`
-	DateAfter string `json:"dateAfter,omitempty"`
+	Kind         string `json:"kind"`
+	URL          string `json:"url"`
+	DateAfter    string `json:"dateAfter,omitempty"`
+	AutoDownload bool   `json:"autoDownload,omitempty"`
 }
 
 type createSourceResponse struct {
@@ -116,7 +117,7 @@ func (a *App) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_source", err.Error())
 		return
 	}
-	src, task, err := a.store.CreateSource(kind, profile, req.DateAfter)
+	src, task, err := a.store.CreateSource(kind, profile, req.DateAfter, req.AutoDownload)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
 		return

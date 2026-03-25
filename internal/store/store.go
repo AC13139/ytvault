@@ -173,7 +173,7 @@ func (s *Store) DeleteSource(id string) error {
 	return s.saveLocked()
 }
 
-func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, dateAfter string) (models.Source, models.Task, error) {
+func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, dateAfter string, autoDownload bool) (models.Source, models.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -205,13 +205,14 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, d
 	}
 	s.nextID++
 	task := models.Task{
-		ID:         fmt.Sprintf("task_%d", s.nextTask),
-		Type:       "index",
-		EntityType: "source",
-		EntityID:   src.ID,
-		Status:     models.TaskStatusQueued,
-		DateAfter:  dateAfter,
-		CreatedAt:  now,
+		ID:           fmt.Sprintf("task_%d", s.nextTask),
+		Type:         "index",
+		EntityType:   "source",
+		EntityID:     src.ID,
+		Status:       models.TaskStatusQueued,
+		AutoDownload: autoDownload,
+		DateAfter:    dateAfter,
+		CreatedAt:    now,
 	}
 	s.nextTask++
 	s.state.Sources = append(s.state.Sources, src)
