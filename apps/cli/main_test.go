@@ -19,7 +19,7 @@ func TestCLIChannelIntakeAndList(t *testing.T) {
 	addOut := runCLI(t, server.URL, "source", "add", "channel", "http://www.youtube.com/@SpeechLab-m7o")
 	for _, want := range []string{
 		"Source src_1",
-		"Title: Channel @SpeechLab-m7o",
+		"Title: Channel (pending index)",
 		"Path: @handle",
 		"Normalized: https://www.youtube.com/@SpeechLab-m7o",
 		"Original: http://www.youtube.com/@SpeechLab-m7o",
@@ -34,7 +34,7 @@ func TestCLIChannelIntakeAndList(t *testing.T) {
 	listOut := runCLI(t, server.URL, "source", "list")
 	for _, want := range []string{
 		"Source src_1",
-		"Title: Channel @SpeechLab-m7o",
+		"Title: Channel (pending index)",
 		"Path: @handle",
 		"Prototype: validated-only: source accepted and queued, live indexing/download not wired yet",
 	} {

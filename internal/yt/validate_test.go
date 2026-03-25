@@ -43,7 +43,7 @@ func TestNormalizeSource_ChannelHandleHTTP(t *testing.T) {
 	if profile.Locator != "@SpeechLab-m7o" {
 		t.Fatalf("locator = %q", profile.Locator)
 	}
-	if profile.DisplayName != "Channel @SpeechLab-m7o" {
+	if profile.DisplayName != "Channel (pending index)" {
 		t.Fatalf("display name = %q", profile.DisplayName)
 	}
 	if profile.PathKind != "handle" || profile.PathLabel != "@handle" {

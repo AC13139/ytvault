@@ -56,7 +56,7 @@ func TestCreateSourceReturnsNormalizedChannelMetadata(t *testing.T) {
 	if resp.Source.InputURL != "http://www.youtube.com/@SpeechLab-m7o" {
 		t.Fatalf("inputUrl = %q", resp.Source.InputURL)
 	}
-	if resp.Source.Title != "Channel @SpeechLab-m7o" {
+	if resp.Source.Title != "Channel (pending index)" {
 		t.Fatalf("title = %q", resp.Source.Title)
 	}
 	if resp.Source.Locator != "@SpeechLab-m7o" {
@@ -94,7 +94,7 @@ func TestIndexShowsSourceProfileDetails(t *testing.T) {
 	}
 	page := getW.Body.String()
 	for _, want := range []string{
-		"Channel @SpeechLab-m7o",
+		"Channel (pending index)",
 		"https://www.youtube.com/@SpeechLab-m7o",
 		"channel",
 	} {

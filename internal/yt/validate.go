@@ -62,7 +62,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 			}
 			profile.Locator = path
 			profile.NormalizedURL = "https://youtu.be/" + path
-			profile.DisplayName = "Video " + path
+			profile.DisplayName = "Video (pending index)"
 			profile.PathKind = "short-link"
 			profile.PathLabel = "youtu.be short link"
 			profile.ValidationSummary = "accepted as single-video source via youtu.be short link"
@@ -74,7 +74,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 		}
 		profile.Locator = videoID
 		profile.NormalizedURL = "https://" + baseHost + "/watch?v=" + videoID
-		profile.DisplayName = "Video " + videoID
+		profile.DisplayName = "Video (pending index)"
 		profile.PathKind = "watch"
 		profile.PathLabel = "watch page"
 		profile.ValidationSummary = "accepted as single-video source via watch page"
@@ -85,7 +85,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 		}
 		profile.Locator = playlistID
 		profile.NormalizedURL = "https://" + baseHost + "/playlist?list=" + playlistID
-		profile.DisplayName = "Playlist " + playlistID
+		profile.DisplayName = "Playlist (pending index)"
 		profile.PathKind = "playlist"
 		profile.PathLabel = "playlist page"
 		profile.ValidationSummary = "accepted as recurring playlist source"
@@ -97,7 +97,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 		case strings.HasPrefix(path, "@"):
 			profile.Locator = path
 			profile.NormalizedURL = "https://www.youtube.com/" + path
-			profile.DisplayName = "Channel " + path
+			profile.DisplayName = "Channel (pending index)"
 			profile.PathKind = "handle"
 			profile.PathLabel = "@handle"
 			profile.ValidationSummary = "accepted as channel source by handle"
@@ -108,7 +108,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 			}
 			profile.Locator = id
 			profile.NormalizedURL = "https://www.youtube.com/channel/" + id
-			profile.DisplayName = "Channel " + id
+			profile.DisplayName = "Channel (pending index)"
 			profile.PathKind = "channel-id"
 			profile.PathLabel = "canonical channel id"
 			profile.ValidationSummary = "accepted as channel source by canonical channel id"
@@ -119,7 +119,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 			}
 			profile.Locator = "c/" + name
 			profile.NormalizedURL = "https://www.youtube.com/c/" + name
-			profile.DisplayName = "Channel c/" + name
+			profile.DisplayName = "Channel (pending index)"
 			profile.PathKind = "custom-path"
 			profile.PathLabel = "legacy /c path"
 			profile.ValidationSummary = "accepted as channel source by legacy custom path"
@@ -130,7 +130,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 			}
 			profile.Locator = "user/" + name
 			profile.NormalizedURL = "https://www.youtube.com/user/" + name
-			profile.DisplayName = "Channel user/" + name
+			profile.DisplayName = "Channel (pending index)"
 			profile.PathKind = "user-path"
 			profile.PathLabel = "legacy /user path"
 			profile.ValidationSummary = "accepted as channel source by legacy user path"

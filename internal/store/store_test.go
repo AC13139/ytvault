@@ -53,7 +53,7 @@ func TestCreateSource(t *testing.T) {
 	if src.URL != "https://www.youtube.com/watch?v=abc123" {
 		t.Fatalf("normalized url = %q", src.URL)
 	}
-	if src.Title != "Video abc123" {
+	if src.Title != "Video (pending index)" {
 		t.Fatalf("title = %q", src.Title)
 	}
 	if src.Locator != "abc123" {

@@ -133,7 +133,7 @@ func buildActionsCell(sourceID string, kind models.SourceKind) string {
 	if kind == models.SourceKindVideo {
 		return fmt.Sprintf(
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
-				`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>scanSource('%s',''))">Refresh</button>%s`+
+				`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',''))">Reindex</button>%s`+
 				`</div>`,
 			sid, deleteBtn,
 		)
@@ -141,7 +141,7 @@ func buildActionsCell(sourceID string, kind models.SourceKind) string {
 	return fmt.Sprintf(
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>scanSource('%s',document.getElementById('scan-date-%s').value))">Scan</button>%s`+
+			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s`+
 			`</div>`,
 		sid, buildDateAfterOptions(""),
 		sid, sid, deleteBtn,
@@ -231,15 +231,14 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		mediaCell := mediaInfo + viewBtn + dlBtn
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			"<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>",
+			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
 			detail,
 			mediaCell,
-			buildScheduleCell(s.ID, s.Kind, schedBySource),
 			buildActionsCell(s.ID, s.Kind),
 		))
 	}
 	if len(sourceRows) == 0 {
-		sourceRows = []string{`<tr><td colspan="4" class="empty">No sources yet.<br><span class="src-meta">Paste a YouTube URL above to get started. Videos will be scanned automatically.</span></td></tr>`}
+		sourceRows = []string{`<tr><td colspan="3" class="empty">No sources yet.<br><span class="src-meta">Use the + New tab to add a YouTube source.</span></td></tr>`}
 	}
 
 	// ── Media filter options ──────────────────────────────────────────────────
@@ -276,14 +275,14 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		case models.MediaItemStatusFailed:
 			action = fmt.Sprintf(
 				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>retryMedia('%s'))">Retry</button>`+
-					` <button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`,
+					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`,
 				mid, mid)
 		case models.MediaItemStatusPending:
 			action = fmt.Sprintf(
-				`<button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
+				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
 		case models.MediaItemStatusDone:
 			action = fmt.Sprintf(
-				`<button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
+				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
 		}
 
 		mediaRows = append(mediaRows, fmt.Sprintf(
@@ -346,7 +345,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		if t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed {
 			action += fmt.Sprintf(
-				` <button class="btn-sm btn-gray" onclick="dismissTask(this,'%s')">Dismiss</button>`,
+				` <button class="btn-sm btn-orange" onclick="dismissTask(this,'%s')">Remove</button>`,
 				html.EscapeString(t.ID),
 			)
 		}
@@ -435,7 +434,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	if hasRunning {
 		autoRefreshJS = `(function poll(){
   const tab=location.hash.slice(1);
-  if(tab==='settings'||tab==='cookies')return;
+  if(tab==='settings'||tab==='cookies'||tab==='new')return;
   setTimeout(()=>location.reload(),5000);
 })();`
 	}
@@ -508,6 +507,11 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .toast-info{border-color:#3b82f6;color:#93c5fd}
 @keyframes tslide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .empty{color:#4b5563;text-align:center;padding:28px;font-size:13px}
+.pager{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;color:#94a3b8}
+.pager select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 6px;color:#e5e7eb;font-size:12px}
+.pager button{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 10px;color:#94a3b8;font-size:12px;cursor:pointer}
+.pager button:hover:not(:disabled){background:#243044;color:#e5e7eb}
+.pager button:disabled{opacity:0.4;cursor:default}
 @media(max-width:768px){.form-row,.form-row-3{grid-template-columns:1fr}.nav-stats{display:none}}
 </style>
 </head>
@@ -515,6 +519,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <nav>
   <span class="logo">YtVault</span>
   <div class="nav-tabs">
+    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')">+ New</button>
     <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')">Sources</button>
     <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')">Media</button>
     <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')">Tasks</button>
@@ -532,9 +537,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="toast"></div>
 <div class="main">
 
-<div id="tab-sources" class="tab-content">
+<div id="tab-new" class="tab-content">
   <div class="card">
-    <div class="card-header"><span class="card-title">Add Source</span></div>
+    <div class="card-header"><span class="card-title">Add New Source</span></div>
     <div class="form-row-3">
       <div><label>Kind</label>
         <select id="kind" onchange="onKindChange(this.value)">
@@ -550,20 +555,38 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <select id="add-dateafter">%s</select>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <button class="btn-primary" onclick="withLoading(this,submitForm)">Add Source</button>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
         <input type="checkbox" id="auto-download" style="width:auto;margin:0" checked> Auto-download after scan
       </label>
+    </div>
+    <div id="new-sched-wrap" style="display:none;margin-bottom:12px">
+      <div class="card-header" style="margin-bottom:8px"><span class="card-title" style="font-size:13px">Schedule (optional)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+          <input type="checkbox" id="new-sched-enabled" style="width:auto;margin:0"> Enable recurring scan
+        </label>
+        <select id="new-sched-interval" style="width:auto;padding:4px 8px;font-size:12px">
+          <option value="6">Every 6h</option><option value="12">Every 12h</option>
+          <option value="24" selected>Every 24h</option><option value="168">Every week</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <button class="btn-primary" onclick="withLoading(this,submitForm)">Add Source</button>
       <span id="add-status" class="src-meta"></span>
     </div>
   </div>
+</div>
+
+<div id="tab-sources" class="tab-content">
   <div class="card">
     <div class="card-header"><span class="card-title">Sources (%d)</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Media</th><th>Schedule</th><th>Actions</th></tr></thead>
-      <tbody>%s</tbody>
+      <thead><tr><th>Source</th><th>Media</th><th>Actions</th></tr></thead>
+      <tbody id="sources-tbody">%s</tbody>
     </table></div>
+    <div class="pager" id="pager-sources"></div>
   </div>
 </div>
 
@@ -582,6 +605,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <thead><tr><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="media-tbody">%s</tbody>
     </table></div>
+    <div class="pager" id="pager-media"></div>
   </div>
 </div>
 
@@ -590,8 +614,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="card-header"><span class="card-title">Tasks (%d)</span><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Entity</th><th>Status</th><th>Created</th><th></th></tr></thead>
-      <tbody>%s</tbody>
+      <tbody id="tasks-tbody">%s</tbody>
     </table></div>
+    <div class="pager" id="pager-tasks"></div>
   </div>
 </div>
 
@@ -600,8 +625,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="card-header"><span class="card-title">Schedules (%d)</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Source</th><th>Interval</th><th>Date filter</th><th>Auto-DL</th><th>State</th><th>Last run</th><th>Next run</th><th></th></tr></thead>
-      <tbody>%s</tbody>
+      <tbody id="schedules-tbody">%s</tbody>
     </table></div>
+    <div class="pager" id="pager-schedules"></div>
   </div>
 </div>
 
@@ -740,8 +766,10 @@ async function withLoading(btn,fn){
   try{await fn();}finally{btn.disabled=false;btn.style.opacity='';btn.textContent=orig;}
 }
 function onKindChange(kind){
-  const wrap=document.getElementById('add-dateafter-wrap');
-  wrap.style.display=(kind==='channel'||kind==='playlist')?'':'none';
+  const isMulti=(kind==='channel'||kind==='playlist');
+  document.getElementById('add-dateafter-wrap').style.display=isMulti?'':'none';
+  const sw=document.getElementById('new-sched-wrap');
+  if(sw)sw.style.display=isMulti?'':'none';
 }
 function autoDetectKind(){
   const url=document.getElementById('url').value.trim().toLowerCase();
@@ -770,8 +798,17 @@ async function submitForm(){
       if(data.task?.id){
         await fetch('/api/v1/tasks/'+data.task.id+'/start',{method:'POST'}).catch(()=>{});
       }
-      toast('Source added — scanning now…','ok');
-      setTimeout(()=>location.reload(),400);
+      // Create schedule if enabled (channel/playlist only)
+      const schedEnabled=document.getElementById('new-sched-enabled');
+      if(schedEnabled&&schedEnabled.checked&&kind!=='video'&&data.source?.id){
+        const interval=parseInt(document.getElementById('new-sched-interval').value)||24;
+        await fetch('/api/v1/sources/'+data.source.id+'/schedule',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({intervalHours:interval,enabled:true,autoDownload:true,dateAfter:dateAfter})
+        }).catch(()=>{});
+      }
+      toast('Source added — indexing now…','ok');
+      setTimeout(()=>{location.hash='sources';location.reload();},400);
     }else{
       const m=data.error?.message||JSON.stringify(data);
       st.textContent=m;st.style.color='#fca5a5';
@@ -779,13 +816,13 @@ async function submitForm(){
     }
   }catch(e){st.textContent='Network error';st.style.color='#fca5a5';toast('Network error','err');}
 }
-async function scanSource(sourceId,dateAfter){
+async function reindexSource(sourceId,dateAfter){
   try{
     const body=dateAfter?{dateAfter}:{};
     const res=await fetch('/api/v1/sources/'+sourceId+'/reindex',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(res.ok||res.status===202){
-      toast(dateAfter?'Scanning ('+dateAfter+')…':'Scanning…','ok');
+      toast(dateAfter?'Reindexing ('+dateAfter+')…':'Reindexing…','ok');
       setTimeout(()=>location.reload(),300);
     }else{
       toast('Scan failed: '+(data.error?.message||JSON.stringify(data)),'err');
@@ -864,9 +901,14 @@ function removeSchedule(btn,sourceId){
   }).catch(e=>{toast('Network error','err');btn.disabled=false;});
 }
 function filterMedia(sourceId){
-  document.querySelectorAll('#media-tbody tr[data-source]').forEach(tr=>{
-    tr.style.display=(sourceId===''||tr.dataset.source===sourceId)?'':'none';
-  });
+  sessionStorage.setItem('mediaFilter',sourceId);
+  if(window.pagers&&window.pagers['media-tbody']){
+    window.pagers['media-tbody'].setFilter(tr=>sourceId===''||tr.dataset.source===sourceId);
+  }else{
+    document.querySelectorAll('#media-tbody tr[data-source]').forEach(tr=>{
+      tr.style.display=(sourceId===''||tr.dataset.source===sourceId)?'':'none';
+    });
+  }
 }
 function viewMedia(sourceId){
   showTab('media');
@@ -885,14 +927,14 @@ async function retryMedia(mediaId){
 }
 function dismissMedia(btn,mediaId){
   if(btn.dataset.confirm!=='1'){
-    btn.dataset.confirm='1';btn.textContent='Sure?';btn.className='btn-sm btn-red';
-    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Remove';btn.className='btn-sm btn-gray';}},3000);
+    btn.dataset.confirm='1';btn.textContent='Confirm?';btn.className='btn-sm btn-red';
+    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Remove';btn.className='btn-sm btn-orange';}},3000);
     return;
   }
-  btn.disabled=true;btn.textContent='…';
+  btn.disabled=true;btn.textContent='Removing…';
   fetch('/api/v1/media/'+mediaId,{method:'DELETE'}).then(res=>{
-    if(res.ok||res.status===204){btn.closest('tr').remove();}
-    else{btn.disabled=false;btn.textContent='Remove';toast('Failed','err');}
+    if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
+    else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
 }
 function deleteSource(btn,sourceId){
@@ -908,11 +950,16 @@ function deleteSource(btn,sourceId){
   }).catch(()=>{toast('Network error','err');btn.disabled=false;});
 }
 function dismissTask(btn,taskId){
-  btn.disabled=true;btn.textContent='…';
+  if(btn.dataset.confirm!=='1'){
+    btn.dataset.confirm='1';btn.textContent='Confirm?';btn.className='btn-sm btn-red';
+    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Remove';btn.className='btn-sm btn-orange';}},3000);
+    return;
+  }
+  btn.disabled=true;btn.textContent='Removing…';
   fetch('/api/v1/tasks/'+taskId,{method:'DELETE'}).then(res=>{
-    if(res.ok||res.status===204){btn.closest('tr').remove();}
-    else{btn.disabled=false;btn.textContent='Dismiss';toast('Failed to dismiss','err');}
-  }).catch(()=>{btn.disabled=false;btn.textContent='Dismiss';});
+    if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
+    else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
+  }).catch(()=>{btn.disabled=false;});
 }
 async function clearCompletedTasks(){
   const res=await fetch('/api/v1/tasks',{method:'DELETE'});
@@ -976,6 +1023,47 @@ function deleteCookies(btn){
     else{toast('Delete failed','err');}
   }).catch(()=>toast('Network error','err'));
 }
+function initPager(tbodyId,pagerId,defaultSize){
+  const tbody=document.getElementById(tbodyId);
+  const pager=document.getElementById(pagerId);
+  if(!tbody||!pager)return;
+  let page=0,size=defaultSize||20;
+  function getRows(){return Array.from(tbody.querySelectorAll('tr')).filter(r=>r.style.display!=='none'||r.dataset.source!==undefined);}
+  function allRows(){return Array.from(tbody.querySelectorAll('tr'));}
+  function render(){
+    const rows=allRows();
+    const visibleRows=rows.filter(r=>!r.dataset.hidden);
+    const total=visibleRows.length;
+    const pages=Math.max(1,Math.ceil(total/size));
+    if(page>=pages)page=pages-1;
+    let vi=0;
+    rows.forEach(r=>{
+      if(r.dataset.hidden==='1'){r.style.display='none';return;}
+      if(vi>=page*size&&vi<(page+1)*size){r.style.display='';}
+      else{r.style.display='none';}
+      vi++;
+    });
+    pager.innerHTML='<button onclick="pagers[\''+tbodyId+'\'].prev()">Prev</button>'+
+      '<span>Page '+(page+1)+' of '+pages+'</span>'+
+      '<button onclick="pagers[\''+tbodyId+'\'].next()">Next</button>'+
+      '<select onchange="pagers[\''+tbodyId+'\'].setSize(+this.value)">'+
+      [5,10,20,50,100].map(n=>'<option value="'+n+'"'+(n===size?' selected':'')+'>'+n+'/page</option>').join('')+
+      '</select>';
+    pager.querySelector('button').disabled=(page===0);
+    pager.querySelectorAll('button')[1].disabled=(page>=pages-1);
+  }
+  const api={
+    prev(){if(page>0){page--;render();}},
+    next(){page++;render();},
+    setSize(n){size=n;page=0;render();},
+    refresh(){render();},
+    setFilter(fn){allRows().forEach(r=>{r.dataset.hidden=fn(r)?'':'1';});page=0;render();}
+  };
+  if(!window.pagers)window.pagers={};
+  window.pagers[tbodyId]=api;
+  render();
+  return api;
+}
 async function loadConfig(){
   try{
     const res=await fetch('/api/v1/config');
@@ -1000,10 +1088,18 @@ async function saveConfig(){
 }
 window.onload=function(){
   const h=location.hash.slice(1);
-  showTab(['sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
+  showTab(['new','sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
   // Restore scroll position after reload
   const sy=sessionStorage.getItem('scrollY');
   if(sy){window.scrollTo(0,parseInt(sy));sessionStorage.removeItem('scrollY');}
+  // Init pagers
+  initPager('sources-tbody','pager-sources',20);
+  initPager('media-tbody','pager-media',20);
+  initPager('tasks-tbody','pager-tasks',20);
+  initPager('schedules-tbody','pager-schedules',20);
+  // Restore media filter
+  const mf=sessionStorage.getItem('mediaFilter');
+  if(mf){const el=document.getElementById('media-filter');if(el){el.value=mf;filterMedia(mf);}}
   %s
 };
 window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY);};

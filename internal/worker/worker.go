@@ -104,9 +104,9 @@ func (w *Worker) runIndex(task models.Task) error {
 	}
 	log.Printf("worker: found %d video(s) for source %s", len(videos), src.ID)
 
-	// Update the source title with the real channel/playlist name returned by
-	// yt-dlp (only meaningful for channel and playlist kinds).
-	if title != "" && src.Kind != models.SourceKindVideo {
+	// Update the source title with the real name from yt-dlp:
+	// channel name, playlist name, or video title.
+	if title != "" {
 		if err := w.store.UpdateSourceTitle(src.ID, title); err != nil {
 			log.Printf("worker: update title for source %s: %v", src.ID, err)
 		}
