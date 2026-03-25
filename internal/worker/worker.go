@@ -43,9 +43,13 @@ func (w *Worker) CancelTask(taskID string) error {
 // goroutine. Returns the task in running state. Callers get a 202-style
 // response immediately; the goroutine updates the task on completion.
 func (w *Worker) StartTask(taskID string) (models.Task, error) {
-	task, err := w.store.MarkTaskRunning(taskID)
-	if err != nil {
-		return models.Task{}, err
+	// Verify task is queued before starting
+	task, ok := w.store.GetTask(taskID)
+	if !ok {
+		return models.Task{}, fmt.Errorf("task %s not found", taskID)
+	}
+	if task.Status != models.TaskStatusQueued {
+		return models.Task{}, fmt.Errorf("task %s is %s, not queued", taskID, task.Status)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w.mu.Lock()
@@ -67,9 +71,13 @@ func (w *Worker) execute(ctx context.Context, task models.Task) {
 	var execErr error
 	switch task.Type {
 	case "index":
+		// Mark running immediately for index tasks
+		if _, err := w.store.MarkTaskRunning(task.ID); err != nil {
+			log.Printf("worker: mark running %s: %v", task.ID, err)
+		}
 		execErr = w.runIndex(task)
 	case "download":
-		// Respect max concurrent downloads
+		// Respect max concurrent downloads — stay queued until slot available
 		maxC := w.store.GetConfig().MaxConcurrent
 		if maxC < 1 {
 			maxC = 1
@@ -78,7 +86,6 @@ func (w *Worker) execute(ctx context.Context, task models.Task) {
 		if w.dlSem == nil {
 			w.dlSem = make(chan struct{}, maxC)
 		} else if cap(w.dlSem) != maxC {
-			// Config changed — recreate semaphore
 			w.dlSem = make(chan struct{}, maxC)
 		}
 		sem := w.dlSem
@@ -90,6 +97,10 @@ func (w *Worker) execute(ctx context.Context, task models.Task) {
 			execErr = fmt.Errorf("cancelled while waiting for download slot")
 		}
 		if execErr == nil {
+			// Now we have the slot — mark as running
+			if _, err := w.store.MarkTaskRunning(task.ID); err != nil {
+				log.Printf("worker: mark running %s: %v", task.ID, err)
+			}
 			execErr = w.runDownload(ctx, task)
 		}
 	default:

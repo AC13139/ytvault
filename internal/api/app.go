@@ -75,6 +75,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/media/download-all-pending", a.handleDownloadAllPending)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", a.handleCancelTask)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/retry", a.handleRetryTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
 	mux.HandleFunc("POST /api/v1/tasks/stop-all", a.handleStopAllRunning)
@@ -481,21 +482,43 @@ func (a *App) handleRetryAllFailed(w http.ResponseWriter, _ *http.Request) {
 		if t.Status != models.TaskStatusFailed {
 			continue
 		}
+		// Reset media item to pending if it's a download task
 		if t.Type == "download" && t.EntityType == "media" {
-			// Reset media to pending and create new download task
-			if err := a.store.RetryMediaItem(t.EntityID); err != nil {
-				continue
-			}
-			newTask, err := a.store.CreateDownloadTask(t.EntityID)
-			if err != nil {
-				continue
-			}
-			if _, err := a.worker.StartTask(newTask.ID); err == nil {
-				retried++
-			}
+			_ = a.store.RetryMediaItem(t.EntityID)
+		}
+		// Requeue the existing failed task and start it
+		if _, err := a.store.RequeueTask(t.ID); err != nil {
+			continue
+		}
+		if _, err := a.worker.StartTask(t.ID); err == nil {
+			retried++
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"retried": retried})
+}
+
+func (a *App) handleRetryTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	task, ok := a.store.GetTask(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "task not found")
+		return
+	}
+	// Reset media item if it's a download task
+	if task.Type == "download" && task.EntityType == "media" {
+		_ = a.store.RetryMediaItem(task.EntityID)
+	}
+	requeued, err := a.store.RequeueTask(id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "retry_failed", err.Error())
+		return
+	}
+	started, err := a.worker.StartTask(requeued.ID)
+	if err != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{"task": requeued, "message": "requeued"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
 }
 
 func (a *App) handleDeleteCompletedTasks(w http.ResponseWriter, _ *http.Request) {

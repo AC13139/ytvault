@@ -347,9 +347,15 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				html.EscapeString(t.ID),
 			)
 		}
+		if t.Status == models.TaskStatusFailed {
+			action += fmt.Sprintf(
+				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>retryTask('%s'))">Retry</button> `,
+				html.EscapeString(t.ID),
+			)
+		}
 		if t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed {
 			action += fmt.Sprintf(
-				` <button class="btn-sm btn-orange" onclick="dismissTask(this,'%s')">Remove</button>`,
+				`<button class="btn-sm btn-orange" onclick="dismissTask(this,'%s')">Remove</button>`,
 				html.EscapeString(t.ID),
 			)
 		}
@@ -1027,6 +1033,11 @@ async function downloadAllPending(){
     toast('Started '+(data.started||0)+' of '+(data.total||0)+' download(s)','ok');
     if(data.total>0)setTimeout(()=>location.reload(),400);
   }else{toast('Failed','err');}
+}
+async function retryTask(taskId){
+  const res=await fetch('/api/v1/tasks/'+taskId+'/retry',{method:'POST'});
+  if(res.ok||res.status===202){toast('Retrying…','ok');setTimeout(()=>location.reload(),400);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
 async function cancelTask(taskId){
   const res=await fetch('/api/v1/tasks/'+taskId+'/cancel',{method:'POST'});

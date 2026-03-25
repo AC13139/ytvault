@@ -661,6 +661,30 @@ func (s *Store) CreateIndexTask(sourceID string, autoDownload bool, dateAfter st
 	return task, nil
 }
 
+// RequeueTask resets a failed task back to queued status.
+func (s *Store) RequeueTask(id string) (models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Tasks {
+		task := &s.state.Tasks[i]
+		if task.ID != id {
+			continue
+		}
+		if task.Status != models.TaskStatusFailed {
+			return models.Task{}, fmt.Errorf("can only retry failed tasks, current: %s", task.Status)
+		}
+		task.Status = models.TaskStatusQueued
+		task.ErrorCode = ""
+		task.ErrorMessage = ""
+		task.CompletedAt = nil
+		if err := s.saveLocked(); err != nil {
+			return models.Task{}, err
+		}
+		return *task, nil
+	}
+	return models.Task{}, fmt.Errorf("task %s not found", id)
+}
+
 // DeleteTask removes a single completed task.
 func (s *Store) DeleteTask(id string) error {
 	s.mu.Lock()
