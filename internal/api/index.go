@@ -679,7 +679,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     </div>
     <div class="form-row">
       <label>Filename template</label>
-      <input type="text" id="cfg-filename" placeholder="%(uploader,channel,id)s/%(title)s [%(id)s].%%(ext)s">
+      <input type="text" id="cfg-filename" placeholder="%%(uploader,channel,id)s/%%(title)s [%%(id)s].%%(ext)s">
     </div>
     <p class="src-meta" style="margin:4px 0 10px 0">Uses <a href="https://github.com/yt-dlp/yt-dlp#output-template" target="_blank" style="color:#60a5fa">yt-dlp output template</a> syntax. Leave empty for default.</p>
     <div class="form-row">
