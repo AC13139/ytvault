@@ -338,6 +338,12 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				html.EscapeString(t.ID),
 			)
 		}
+		if t.Status == models.TaskStatusRunning {
+			action = fmt.Sprintf(
+				`<button class="btn-sm btn-orange" onclick="withLoading(this,()=>cancelTask('%s'))">Stop</button>`,
+				html.EscapeString(t.ID),
+			)
+		}
 		if t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed {
 			action += fmt.Sprintf(
 				` <button class="btn-sm btn-gray" onclick="dismissTask(this,'%s')">Dismiss</button>`,
@@ -849,6 +855,11 @@ function viewMedia(sourceId){
   showTab('media');
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
+}
+async function cancelTask(taskId){
+  const res=await fetch('/api/v1/tasks/'+taskId+'/cancel',{method:'POST'});
+  if(res.ok){toast('Stopping task…','ok');setTimeout(()=>location.reload(),1000);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
 async function retryMedia(mediaId){
   const res=await fetch('/api/v1/media/'+mediaId+'/retry',{method:'POST'});

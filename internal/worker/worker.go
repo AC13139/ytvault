@@ -2,8 +2,10 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"sync"
 
 	"ytvault/internal/models"
 	"ytvault/internal/store"
@@ -14,11 +16,26 @@ import (
 type Worker struct {
 	store       *store.Store
 	downloadDir string
+
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc // taskID → cancel
 }
 
 // New creates a Worker. downloadDir is where video files are saved.
 func New(s *store.Store, downloadDir string) *Worker {
-	return &Worker{store: s, downloadDir: downloadDir}
+	return &Worker{store: s, downloadDir: downloadDir, cancels: make(map[string]context.CancelFunc)}
+}
+
+// CancelTask stops a running task.
+func (w *Worker) CancelTask(taskID string) error {
+	w.mu.Lock()
+	cancel, ok := w.cancels[taskID]
+	w.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("task %s is not running or already finished", taskID)
+	}
+	cancel()
+	return nil
 }
 
 // StartTask atomically marks the task as running then executes it in a
@@ -29,24 +46,41 @@ func (w *Worker) StartTask(taskID string) (models.Task, error) {
 	if err != nil {
 		return models.Task{}, err
 	}
-	go w.execute(task)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.mu.Lock()
+	w.cancels[taskID] = cancel
+	w.mu.Unlock()
+	go func() {
+		defer func() {
+			cancel()
+			w.mu.Lock()
+			delete(w.cancels, taskID)
+			w.mu.Unlock()
+		}()
+		w.execute(ctx, task)
+	}()
 	return task, nil
 }
 
-func (w *Worker) execute(task models.Task) {
+func (w *Worker) execute(ctx context.Context, task models.Task) {
 	var execErr error
 	switch task.Type {
 	case "index":
 		execErr = w.runIndex(task)
 	case "download":
-		execErr = w.runDownload(task)
+		execErr = w.runDownload(ctx, task)
 	default:
 		execErr = fmt.Errorf("unknown task type: %s", task.Type)
 	}
 
 	if execErr != nil {
+		code := "execution_failed"
+		if ctx.Err() != nil {
+			code = "cancelled"
+			execErr = fmt.Errorf("task cancelled by user")
+		}
 		log.Printf("worker: task %s (%s) failed: %v", task.ID, task.Type, execErr)
-		if err := w.store.FailTask(task.ID, "execution_failed", execErr.Error()); err != nil {
+		if err := w.store.FailTask(task.ID, code, execErr.Error()); err != nil {
 			log.Printf("worker: fail task %s: %v", task.ID, err)
 		}
 		return
@@ -114,7 +148,7 @@ func (w *Worker) runIndex(task models.Task) error {
 	return nil
 }
 
-func (w *Worker) runDownload(task models.Task) error {
+func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	item, ok := w.store.GetMediaItem(task.EntityID)
 	if !ok {
 		return fmt.Errorf("media item %s not found", task.EntityID)
@@ -126,7 +160,7 @@ func (w *Worker) runDownload(task models.Task) error {
 	}
 
 	cfg := w.store.GetConfig()
-	filePath, err := ytdlp.Download(item.URL, w.downloadDir, cfg.FilenameTemplate, cfg.VideoFormat)
+	filePath, err := ytdlp.Download(ctx, item.URL, w.downloadDir, cfg.FilenameTemplate, cfg.VideoFormat)
 	if err != nil {
 		dlErr := fmt.Errorf("download %s: %w", item.URL, err)
 		_ = w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusFailed, "", dlErr.Error())

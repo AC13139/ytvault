@@ -72,6 +72,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/media/{id}", a.handleDeleteMedia)
 	mux.HandleFunc("POST /api/v1/media/{id}/retry", a.handleRetryMedia)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
+	mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", a.handleCancelTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
@@ -372,6 +373,15 @@ func (a *App) handleRetryMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
+}
+
+func (a *App) handleCancelTask(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := a.worker.CancelTask(id); err != nil {
+		writeError(w, http.StatusBadRequest, "cancel_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": "task cancellation requested"})
 }
 
 func (a *App) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
