@@ -95,9 +95,17 @@ type Schedule struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }
 
+// Config stores user-configurable settings with sensible defaults.
+type Config struct {
+	FilenameTemplate string `json:"filenameTemplate,omitempty"` // yt-dlp output template
+	VideoFormat      string `json:"videoFormat,omitempty"`      // yt-dlp -f value
+	MaxConcurrent    int    `json:"maxConcurrent,omitempty"`    // future: concurrent downloads
+}
+
 type State struct {
 	Sources    []Source    `json:"sources"`
 	Tasks      []Task      `json:"tasks"`
 	MediaItems []MediaItem `json:"mediaItems"`
 	Schedules  []Schedule  `json:"schedules"`
+	Config     *Config     `json:"config,omitempty"`
 }

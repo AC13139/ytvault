@@ -125,7 +125,8 @@ func (w *Worker) runDownload(task models.Task) error {
 		return err
 	}
 
-	filePath, err := ytdlp.Download(item.URL, w.downloadDir)
+	cfg := w.store.GetConfig()
+	filePath, err := ytdlp.Download(item.URL, w.downloadDir, cfg.FilenameTemplate, cfg.VideoFormat)
 	if err != nil {
 		dlErr := fmt.Errorf("download %s: %w", item.URL, err)
 		_ = w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusFailed, "", dlErr.Error())

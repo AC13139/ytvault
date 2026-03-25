@@ -510,6 +510,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')">Tasks</button>
     <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')">Schedules</button>
     <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')">Cookies %s</button>
+    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')">Settings</button>
   </div>
   <div class="nav-stats">
     <span class="stat-pill" onclick="showTab('sources')">%d sources</span>
@@ -663,6 +664,35 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<div id="tab-settings" class="tab-content">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Download Settings</span></div>
+    <div class="form-row">
+      <label>Download directory</label>
+      <span class="src-meta" id="cfg-dldir" style="padding:7px 0">Loading…</span>
+    </div>
+    <div class="form-row">
+      <label>Filename template</label>
+      <input type="text" id="cfg-filename" placeholder="%(uploader,channel,id)s/%(title)s [%(id)s].%%(ext)s">
+    </div>
+    <p class="src-meta" style="margin:4px 0 10px 0">Uses <a href="https://github.com/yt-dlp/yt-dlp#output-template" target="_blank" style="color:#60a5fa">yt-dlp output template</a> syntax. Leave empty for default.</p>
+    <div class="form-row">
+      <label>Video quality</label>
+      <select id="cfg-format">
+        <option value="bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best">Best (MP4 preferred)</option>
+        <option value="bestvideo+bestaudio/best">Best (any format)</option>
+        <option value="bestvideo[height<=1080]+bestaudio/best">Up to 1080p</option>
+        <option value="bestvideo[height<=720]+bestaudio/best">Up to 720p</option>
+        <option value="bestaudio/best">Audio only</option>
+      </select>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn-primary" onclick="withLoading(this,saveConfig)">Save Settings</button>
+      <span id="cfg-status" class="src-meta" style="margin-left:8px"></span>
+    </div>
+  </div>
+</div>
+
 </div>
 <script>
 function showTab(name){
@@ -672,6 +702,7 @@ function showTab(name){
   if(c)c.classList.add('active');
   if(b)b.classList.add('active');
   location.hash=name;
+  if(name==='settings')loadConfig();
 }
 function toast(msg,type){
   const d=document.createElement('div');
@@ -917,9 +948,29 @@ function deleteCookies(btn){
     else{toast('Delete failed','err');}
   }).catch(()=>toast('Network error','err'));
 }
+async function loadConfig(){
+  try{
+    const res=await fetch('/api/v1/config');
+    const data=await res.json();
+    document.getElementById('cfg-dldir').textContent=data.downloadDir||'—';
+    document.getElementById('cfg-filename').value=data.config?.filenameTemplate||'';
+    const fmt=document.getElementById('cfg-format');
+    const v=data.config?.videoFormat||'';
+    for(let i=0;i<fmt.options.length;i++){if(fmt.options[i].value===v){fmt.selectedIndex=i;break;}}
+  }catch(e){}
+}
+async function saveConfig(){
+  const body={
+    filenameTemplate:document.getElementById('cfg-filename').value.trim(),
+    videoFormat:document.getElementById('cfg-format').value,
+    maxConcurrent:1
+  };
+  const res=await fetch('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast('Settings saved','ok');}else{toast('Failed to save','err');}
+}
 window.onload=function(){
   const h=location.hash.slice(1);
-  showTab(['sources','media','tasks','schedules','cookies'].includes(h)?h:'sources');
+  showTab(['sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
   // Restore scroll position after reload
   const sy=sessionStorage.getItem('scrollY');
   if(sy){window.scrollTo(0,parseInt(sy));sessionStorage.removeItem('scrollY');}

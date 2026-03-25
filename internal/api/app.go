@@ -24,6 +24,7 @@ type App struct {
 	worker      *worker.Worker
 	scheduler   *scheduler.Scheduler
 	cookiesPath string
+	downloadDir string
 
 	// Cached cookie validation result
 	cookiesMu         sync.Mutex
@@ -44,7 +45,7 @@ func NewApp(dataPath, downloadDir, cookiesPath string) (*App, error) {
 	w := worker.New(s, downloadDir)
 	sc := scheduler.New(s, w)
 	sc.Start()
-	return &App{store: s, worker: w, scheduler: sc, cookiesPath: cookiesPath}, nil
+	return &App{store: s, worker: w, scheduler: sc, cookiesPath: cookiesPath, downloadDir: downloadDir}, nil
 }
 
 // Close stops background goroutines. Call on server shutdown.
@@ -73,6 +74,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
+	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
+	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
 	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
@@ -320,6 +323,27 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
 		},
 	})
+}
+
+func (a *App) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
+	cfg := a.store.GetConfig()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"config":      cfg,
+		"downloadDir": a.downloadDir,
+	})
+}
+
+func (a *App) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
+	var cfg models.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := a.store.UpdateConfig(cfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "save_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"config": a.store.GetConfig()})
 }
 
 func (a *App) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {

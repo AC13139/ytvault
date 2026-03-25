@@ -125,11 +125,18 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 }
 
 // Download downloads a single video to outputDir using yt-dlp.
+// filenameTemplate and videoFormat can be empty to use defaults.
 // Returns the path of the downloaded file.
-func Download(videoURL, outputDir string) (string, error) {
-	template := filepath.Join(outputDir, "%(uploader,channel,id)s", "%(title)s [%(id)s].%(ext)s")
+func Download(videoURL, outputDir, filenameTemplate, videoFormat string) (string, error) {
+	if filenameTemplate == "" {
+		filenameTemplate = "%(uploader,channel,id)s/%(title)s [%(id)s].%(ext)s"
+	}
+	if videoFormat == "" {
+		videoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+	}
+	template := filepath.Join(outputDir, filenameTemplate)
 	args := append(baseArgs(),
-		"-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
+		"-f", videoFormat,
 		"--merge-output-format", "mp4",
 		"--no-warnings",
 		"--print", "after_move:filepath",

@@ -667,6 +667,41 @@ func (s *Store) DeleteCompletedTasks() int {
 	return removed
 }
 
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const DefaultFilenameTemplate = "%(uploader,channel,id)s/%(title)s [%(id)s].%(ext)s"
+const DefaultVideoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+
+func (s *Store) GetConfig() models.Config {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.state.Config == nil {
+		return models.Config{
+			FilenameTemplate: DefaultFilenameTemplate,
+			VideoFormat:      DefaultVideoFormat,
+			MaxConcurrent:    1,
+		}
+	}
+	c := *s.state.Config
+	if c.FilenameTemplate == "" {
+		c.FilenameTemplate = DefaultFilenameTemplate
+	}
+	if c.VideoFormat == "" {
+		c.VideoFormat = DefaultVideoFormat
+	}
+	if c.MaxConcurrent < 1 {
+		c.MaxConcurrent = 1
+	}
+	return c
+}
+
+func (s *Store) UpdateConfig(cfg models.Config) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.Config = &cfg
+	return s.saveLocked()
+}
+
 // ── Schedules ─────────────────────────────────────────────────────────────────
 
 func (s *Store) ListSchedules() []models.Schedule {
