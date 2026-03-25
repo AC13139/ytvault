@@ -70,7 +70,9 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/{id}/start", a.handleStartTask)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", a.handleDeleteSource)
 	mux.HandleFunc("DELETE /api/v1/media/{id}", a.handleDeleteMedia)
+	mux.HandleFunc("POST /api/v1/media/{id}/download", a.handleDownloadMedia)
 	mux.HandleFunc("POST /api/v1/media/{id}/retry", a.handleRetryMedia)
+	mux.HandleFunc("POST /api/v1/media/download-all-pending", a.handleDownloadAllPending)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", a.handleCancelTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
@@ -345,6 +347,41 @@ func (a *App) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"config": a.store.GetConfig()})
+}
+
+func (a *App) handleDownloadMedia(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	task, err := a.store.CreateDownloadTask(id)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "download_failed", err.Error())
+		return
+	}
+	started, err := a.worker.StartTask(task.ID)
+	if err != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{"task": task})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
+}
+
+func (a *App) handleDownloadAllPending(w http.ResponseWriter, _ *http.Request) {
+	// Find all pending media items across all sources
+	sources := a.store.ListSources()
+	started := 0
+	total := 0
+	for _, src := range sources {
+		tasks, err := a.store.CreateDownloadTasksForSource(src.ID)
+		if err != nil {
+			continue
+		}
+		total += len(tasks)
+		for _, t := range tasks {
+			if _, err := a.worker.StartTask(t.ID); err == nil {
+				started++
+			}
+		}
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"total": total, "started": started})
 }
 
 func (a *App) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {

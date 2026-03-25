@@ -97,11 +97,14 @@ type Schedule struct {
 
 // Config stores user-configurable settings with sensible defaults.
 type Config struct {
-	FolderFormat     string `json:"folderFormat,omitempty"`     // folder naming preset key
-	FileFormat       string `json:"fileFormat,omitempty"`       // file naming preset key
-	FilenameTemplate string `json:"filenameTemplate,omitempty"` // resolved yt-dlp output template
-	VideoFormat      string `json:"videoFormat,omitempty"`      // yt-dlp -f value
-	MaxConcurrent    int    `json:"maxConcurrent,omitempty"`    // future: concurrent downloads
+	FolderFormat          string `json:"folderFormat,omitempty"`          // folder naming preset key
+	FileFormat            string `json:"fileFormat,omitempty"`            // file naming preset key
+	PlaylistFolderOverride bool   `json:"playlistFolderOverride,omitempty"` // use playlist name as folder for playlist sources
+	PlaylistFileOverride   bool   `json:"playlistFileOverride,omitempty"`   // use playlist index+title for playlist sources
+	FilenameTemplate      string `json:"filenameTemplate,omitempty"`      // resolved yt-dlp output template
+	PlaylistTemplate      string `json:"playlistTemplate,omitempty"`      // resolved template for playlist sources
+	VideoFormat           string `json:"videoFormat,omitempty"`           // yt-dlp -f value
+	MaxConcurrent         int    `json:"maxConcurrent,omitempty"`         // max parallel downloads
 }
 
 type State struct {

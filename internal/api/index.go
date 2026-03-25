@@ -202,13 +202,12 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 
 		// Detail cell — show only title, kind badge, and URL as clickable link
 		detail := fmt.Sprintf(
-			`<div class="src-title">%s</div>`+
+			`<div class="src-title" title="%s">%s</div>`+
 				`<div class="tags">%s</div>`+
-				`<div class="src-meta"><a href="%s" target="_blank" style="color:#60a5fa">%s</a></div>`,
-			html.EscapeString(s.Title),
+				`<div class="src-meta" title="%s"><a href="%s" target="_blank" style="color:#60a5fa">%s</a></div>`,
+			html.EscapeString(s.Title), html.EscapeString(s.Title),
 			tag(string(s.Kind)),
-			html.EscapeString(s.URL),
-			html.EscapeString(s.URL),
+			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
 		)
 
 		// Media cell
@@ -221,14 +220,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			`<br><button class="btn-sm btn-blue" style="margin-top:4px" onclick="viewMedia('%s')">View media</button>`,
 			html.EscapeString(s.ID),
 		)
-		dlBtn := ""
-		if mediaCount > 0 {
-			dlBtn = fmt.Sprintf(
-				` <button class="btn-sm btn-green" onclick="withLoading(this,()=>downloadAll('%s'))">Download all</button>`,
-				html.EscapeString(s.ID),
-			)
-		}
-		mediaCell := mediaInfo + viewBtn + dlBtn
+		mediaCell := mediaInfo + viewBtn
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
 			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
@@ -279,16 +271,17 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				mid, mid)
 		case models.MediaItemStatusPending:
 			action = fmt.Sprintf(
-				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
+				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>downloadMedia('%s'))">Download</button>`+
+					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		case models.MediaItemStatusDone:
 			action = fmt.Sprintf(
 				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
 		}
 
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s"><td>%s</td><td class="src-meta">%s</td><td>%s</td><td>%s</td></tr>`,
+			`<tr data-source="%s"><td title="%s">%s</td><td class="src-meta">%s</td><td>%s</td><td>%s</td></tr>`,
 			html.EscapeString(m.SourceID),
-			html.EscapeString(m.Title),
+			html.EscapeString(m.Title), html.EscapeString(m.Title),
 			html.EscapeString(dur),
 			statusBadge(string(m.Status)),
 			action,
@@ -356,9 +349,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
-			`<tr><td>%s</td><td>%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
 			html.EscapeString(typeLabel),
-			html.EscapeString(entityName),
+			html.EscapeString(entityName), html.EscapeString(entityName),
 			statusCell,
 			createdAt,
 			action,
@@ -481,7 +474,7 @@ button{border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:point
 .table-wrap{overflow-x:auto}
 table{width:100%%;border-collapse:collapse;font-size:13px}
 th{color:#94a3b8;font-weight:500;padding:9px 8px;border-bottom:1px solid #1e293b;text-align:left;white-space:nowrap}
-td{padding:9px 8px;border-bottom:1px solid #111827;vertical-align:top}
+td{padding:9px 8px;border-bottom:1px solid #111827;vertical-align:top;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
 .badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap}
@@ -495,8 +488,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .badge-enabled{background:#14532d;color:#86efac}
 .badge-disabled{background:#1e293b;color:#94a3b8}
 .tag{display:inline-flex;align-items:center;background:#172033;border:1px solid #31415f;border-radius:999px;padding:2px 7px;font-size:11px;color:#bfdbfe}
-.src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px}
-.src-meta{color:#94a3b8;font-size:12px}
+.src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-meta{color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
@@ -508,7 +501,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 @keyframes tslide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
 .empty{color:#4b5563;text-align:center;padding:28px;font-size:13px}
 .pager{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;color:#94a3b8}
-.pager select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 6px;color:#e5e7eb;font-size:12px}
+.pager select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 4px;color:#e5e7eb;font-size:11px;width:auto;min-width:0}
 .pager button{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 10px;color:#94a3b8;font-size:12px;cursor:pointer}
 .pager button:hover:not(:disabled){background:#243044;color:#e5e7eb}
 .pager button:disabled{opacity:0.4;cursor:default}
@@ -595,6 +588,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="card-header">
       <span class="card-title">Media Items (%d)</span>
       <div class="filter-bar">
+        <button class="btn-sm btn-green" onclick="withLoading(this,downloadAllPending)">Download All Pending</button>
         <span class="src-meta">Filter:</span>
         <select id="media-filter" onchange="filterMedia(this.value)">
           <option value="">All sources</option>%s
@@ -715,15 +709,23 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="channel_year">Channel / Year (yyyy)</option>
         <option value="channel_month">Channel / Month (yyyy-mm)</option>
         <option value="channel_day">Channel / Date (yyyy-mm-dd)</option>
-        <option value="playlist">Playlist name</option>
       </select>
     </div>
     <div class="form-row">
       <label>File name</label>
       <select id="cfg-file">
-        <option value="date_title">Date + Title (yyyy-mm-dd Title [id].ext)</option>
-        <option value="title">Title only (Title [id].ext)</option>
+        <option value="date_title">Date + Title (yyyy-mm-dd Title.ext)</option>
+        <option value="title">Title only (Title.ext)</option>
       </select>
+    </div>
+    <div style="margin:10px 0;padding:10px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
+      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Playlist overrides</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer;margin-bottom:6px">
+        <input type="checkbox" id="cfg-pl-folder" style="width:auto;margin:0" checked> Use playlist name as folder for playlist sources
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer">
+        <input type="checkbox" id="cfg-pl-file" style="width:auto;margin:0" checked> Use playlist index + title as filename for playlist sources
+      </label>
     </div>
     <div class="form-row">
       <label>Video quality</label>
@@ -733,6 +735,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="bestvideo[height<=1080]+bestaudio/best">Up to 1080p</option>
         <option value="bestvideo[height<=720]+bestaudio/best">Up to 720p</option>
         <option value="bestaudio/best">Audio only</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Max concurrent downloads</label>
+      <select id="cfg-concurrent">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="5">5</option>
       </select>
     </div>
     <div style="margin-top:12px">
@@ -915,6 +926,19 @@ function viewMedia(sourceId){
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
 }
+async function downloadMedia(mediaId){
+  const res=await fetch('/api/v1/media/'+mediaId+'/download',{method:'POST'});
+  if(res.ok||res.status===202){toast('Download started','ok');setTimeout(()=>location.reload(),400);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
+}
+async function downloadAllPending(){
+  const res=await fetch('/api/v1/media/download-all-pending',{method:'POST'});
+  const data=await res.json();
+  if(res.ok||res.status===202){
+    toast('Started '+(data.started||0)+' of '+(data.total||0)+' download(s)','ok');
+    if(data.total>0)setTimeout(()=>location.reload(),400);
+  }else{toast('Failed','err');}
+}
 async function cancelTask(taskId){
   const res=await fetch('/api/v1/tasks/'+taskId+'/cancel',{method:'POST'});
   if(res.ok){toast('Stopping task…','ok');setTimeout(()=>location.reload(),1000);}
@@ -1047,7 +1071,7 @@ function initPager(tbodyId,pagerId,defaultSize){
       '<span>Page '+(page+1)+' of '+pages+'</span>'+
       '<button onclick="pagers[\''+tbodyId+'\'].next()">Next</button>'+
       '<select onchange="pagers[\''+tbodyId+'\'].setSize(+this.value)">'+
-      [5,10,20,50,100].map(n=>'<option value="'+n+'"'+(n===size?' selected':'')+'>'+n+'/page</option>').join('')+
+      [5,10,20,50,100].map(n=>'<option value="'+n+'"'+(n===size?' selected':'')+'>'+n+'</option>').join('')+
       '</select>';
     pager.querySelector('button').disabled=(page===0);
     pager.querySelectorAll('button')[1].disabled=(page>=pages-1);
@@ -1074,14 +1098,19 @@ async function loadConfig(){
     setSelect('cfg-folder',c.folderFormat||'channel');
     setSelect('cfg-file',c.fileFormat||'date_title');
     setSelect('cfg-format',c.videoFormat||'');
+    setSelect('cfg-concurrent',String(c.maxConcurrent||1));
+    document.getElementById('cfg-pl-folder').checked=c.playlistFolderOverride!==false;
+    document.getElementById('cfg-pl-file').checked=c.playlistFileOverride!==false;
   }catch(e){}
 }
 async function saveConfig(){
   const body={
     folderFormat:document.getElementById('cfg-folder').value,
     fileFormat:document.getElementById('cfg-file').value,
+    playlistFolderOverride:document.getElementById('cfg-pl-folder').checked,
+    playlistFileOverride:document.getElementById('cfg-pl-file').checked,
     videoFormat:document.getElementById('cfg-format').value,
-    maxConcurrent:1
+    maxConcurrent:parseInt(document.getElementById('cfg-concurrent').value)||1
   };
   const res=await fetch('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(res.ok){toast('Settings saved','ok');}else{toast('Failed to save','err');}

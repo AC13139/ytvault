@@ -19,6 +19,7 @@ type Worker struct {
 
 	mu      sync.Mutex
 	cancels map[string]context.CancelFunc // taskID → cancel
+	dlSem   chan struct{}                 // download concurrency limiter
 }
 
 // New creates a Worker. downloadDir is where video files are saved.
@@ -68,7 +69,29 @@ func (w *Worker) execute(ctx context.Context, task models.Task) {
 	case "index":
 		execErr = w.runIndex(task)
 	case "download":
-		execErr = w.runDownload(ctx, task)
+		// Respect max concurrent downloads
+		maxC := w.store.GetConfig().MaxConcurrent
+		if maxC < 1 {
+			maxC = 1
+		}
+		w.mu.Lock()
+		if w.dlSem == nil {
+			w.dlSem = make(chan struct{}, maxC)
+		} else if cap(w.dlSem) != maxC {
+			// Config changed — recreate semaphore
+			w.dlSem = make(chan struct{}, maxC)
+		}
+		sem := w.dlSem
+		w.mu.Unlock()
+		select {
+		case sem <- struct{}{}:
+			defer func() { <-sem }()
+		case <-ctx.Done():
+			execErr = fmt.Errorf("cancelled while waiting for download slot")
+		}
+		if execErr == nil {
+			execErr = w.runDownload(ctx, task)
+		}
 	default:
 		execErr = fmt.Errorf("unknown task type: %s", task.Type)
 	}
@@ -160,7 +183,12 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	}
 
 	cfg := w.store.GetConfig()
-	filePath, err := ytdlp.Download(ctx, item.URL, w.downloadDir, cfg.FilenameTemplate, cfg.VideoFormat)
+	// Use playlist-specific template if the source is a playlist
+	tmpl := cfg.FilenameTemplate
+	if src, ok := w.store.GetSource(item.SourceID); ok && src.Kind == models.SourceKindPlaylist {
+		tmpl = cfg.PlaylistTemplate
+	}
+	filePath, err := ytdlp.Download(ctx, item.URL, w.downloadDir, tmpl, cfg.VideoFormat)
 	if err != nil {
 		dlErr := fmt.Errorf("download %s: %w", item.URL, err)
 		_ = w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusFailed, "", dlErr.Error())

@@ -713,9 +713,14 @@ var FolderPresets = map[string]string{
 
 // File naming presets
 var FilePresets = map[string]string{
-	"date_title": "%(upload_date>%Y-%m-%d)s %(title)s [%(id)s].%(ext)s",
-	"title":      "%(title)s [%(id)s].%(ext)s",
+	"date_title":     "%(upload_date>%Y-%m-%d)s %(title)s [%(id)s].%(ext)s",
+	"title":          "%(title)s [%(id)s].%(ext)s",
+	"index_title":    "%(playlist_index)03d %(title)s [%(id)s].%(ext)s",
 }
+
+// Playlist override presets — when source is a playlist, these can override the main config
+var PlaylistFolderPreset = "%(playlist_title,uploader,channel,id)s"
+var PlaylistFilePreset = "%(playlist_index)03d %(title)s [%(id)s].%(ext)s"
 
 func resolveTemplate(folderKey, fileKey string) string {
 	folder, ok := FolderPresets[folderKey]
@@ -729,16 +734,37 @@ func resolveTemplate(folderKey, fileKey string) string {
 	return folder + "/" + file
 }
 
+func resolvePlaylistTemplate(folderOverride, fileOverride bool, folderKey, fileKey string) string {
+	folder := FolderPresets[folderKey]
+	if folderOverride {
+		folder = PlaylistFolderPreset
+	}
+	file := FilePresets[fileKey]
+	if fileOverride {
+		file = PlaylistFilePreset
+	}
+	if folder == "" {
+		folder = PlaylistFolderPreset
+	}
+	if file == "" {
+		file = PlaylistFilePreset
+	}
+	return folder + "/" + file
+}
+
 func (s *Store) GetConfig() models.Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.state.Config == nil {
 		return models.Config{
-			FolderFormat:     "channel",
-			FileFormat:       "date_title",
-			FilenameTemplate: resolveTemplate("channel", "date_title"),
-			VideoFormat:      DefaultVideoFormat,
-			MaxConcurrent:    1,
+			FolderFormat:           "channel",
+			FileFormat:             "date_title",
+			PlaylistFolderOverride: true,
+			PlaylistFileOverride:   true,
+			FilenameTemplate:       resolveTemplate("channel", "date_title"),
+			PlaylistTemplate:       resolvePlaylistTemplate(true, true, "channel", "date_title"),
+			VideoFormat:            DefaultVideoFormat,
+			MaxConcurrent:          1,
 		}
 	}
 	c := *s.state.Config
@@ -749,6 +775,7 @@ func (s *Store) GetConfig() models.Config {
 		c.FileFormat = "date_title"
 	}
 	c.FilenameTemplate = resolveTemplate(c.FolderFormat, c.FileFormat)
+	c.PlaylistTemplate = resolvePlaylistTemplate(c.PlaylistFolderOverride, c.PlaylistFileOverride, c.FolderFormat, c.FileFormat)
 	if c.VideoFormat == "" {
 		c.VideoFormat = DefaultVideoFormat
 	}
@@ -761,8 +788,8 @@ func (s *Store) GetConfig() models.Config {
 func (s *Store) UpdateConfig(cfg models.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Resolve the template from presets
 	cfg.FilenameTemplate = resolveTemplate(cfg.FolderFormat, cfg.FileFormat)
+	cfg.PlaylistTemplate = resolvePlaylistTemplate(cfg.PlaylistFolderOverride, cfg.PlaylistFileOverride, cfg.FolderFormat, cfg.FileFormat)
 	s.state.Config = &cfg
 	return s.saveLocked()
 }
