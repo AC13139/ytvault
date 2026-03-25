@@ -533,7 +533,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
         </select>
       </div>
       <div><label>YouTube URL</label>
-        <input type="text" id="url" placeholder="https://www.youtube.com/..." onkeydown="if(event.key==='Enter')submitForm()">
+        <input type="text" id="url" placeholder="https://www.youtube.com/..." onkeydown="if(event.key==='Enter')submitForm()" oninput="autoDetectKind()">
       </div>
       <div id="add-dateafter-wrap" style="display:none"><label>Date filter</label>
         <select id="add-dateafter">%s</select>
@@ -688,6 +688,14 @@ async function withLoading(btn,fn){
 function onKindChange(kind){
   const wrap=document.getElementById('add-dateafter-wrap');
   wrap.style.display=(kind==='channel'||kind==='playlist')?'':'none';
+}
+function autoDetectKind(){
+  const url=document.getElementById('url').value.trim().toLowerCase();
+  const kind=document.getElementById('kind');
+  if(url.includes('/playlist')||url.includes('list='))kind.value='playlist';
+  else if(url.includes('/@')||url.includes('/channel/')||url.includes('/c/')||url.includes('/user/'))kind.value='channel';
+  else kind.value='video';
+  onKindChange(kind.value);
 }
 async function submitForm(){
   const kind=document.getElementById('kind').value;
@@ -912,8 +920,12 @@ function deleteCookies(btn){
 window.onload=function(){
   const h=location.hash.slice(1);
   showTab(['sources','media','tasks','schedules','cookies'].includes(h)?h:'sources');
+  // Restore scroll position after reload
+  const sy=sessionStorage.getItem('scrollY');
+  if(sy){window.scrollTo(0,parseInt(sy));sessionStorage.removeItem('scrollY');}
   %s
 };
+window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY);};
 </script>
 </body></html>`
 
