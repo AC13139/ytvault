@@ -532,21 +532,31 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 <div id="tab-new" class="tab-content">
   <div class="card">
-    <div class="card-header"><span class="card-title">Add New Source</span></div>
-    <div class="form-row-3">
-      <div><label>Kind</label>
-        <select id="kind" onchange="onKindChange(this.value)">
-          <option value="video">Video</option>
-          <option value="playlist">Playlist</option>
-          <option value="channel">Channel</option>
-        </select>
+    <div class="card-header"><span class="card-title">Search YouTube</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input type="text" id="search-q" placeholder="Search by keywords…" style="flex:1" onkeydown="if(event.key==='Enter')searchYT()">
+      <button class="btn-primary" onclick="withLoading(this,searchYT)">Search</button>
+    </div>
+    <div id="search-results" style="display:none">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Title</th><th>Channel</th><th>Duration</th><th></th></tr></thead>
+        <tbody id="search-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Add Source</span></div>
+    <input type="hidden" id="kind" value="video">
+    <div class="form-row">
+      <label>YouTube URL</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="url" placeholder="https://www.youtube.com/..." style="flex:1" onkeydown="if(event.key==='Enter')submitForm()" oninput="autoDetectKind()">
+        <span id="detected-kind" class="badge badge-pending" style="white-space:nowrap"></span>
       </div>
-      <div><label>YouTube URL</label>
-        <input type="text" id="url" placeholder="https://www.youtube.com/..." onkeydown="if(event.key==='Enter')submitForm()" oninput="autoDetectKind()">
-      </div>
-      <div id="add-dateafter-wrap" style="display:none"><label>Date filter</label>
-        <select id="add-dateafter">%s</select>
-      </div>
+    </div>
+    <div id="add-dateafter-wrap" style="display:none" class="form-row">
+      <label>Date filter</label>
+      <select id="add-dateafter">%s</select>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
@@ -554,7 +564,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </label>
     </div>
     <div id="new-sched-wrap" style="display:none;margin-bottom:12px">
-      <div class="card-header" style="margin-bottom:8px"><span class="card-title" style="font-size:13px">Schedule (optional)</span></div>
+      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Schedule (optional)</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
           <input type="checkbox" id="new-sched-enabled" style="width:auto;margin:0"> Enable recurring scan
@@ -781,6 +791,11 @@ function onKindChange(kind){
   document.getElementById('add-dateafter-wrap').style.display=isMulti?'':'none';
   const sw=document.getElementById('new-sched-wrap');
   if(sw)sw.style.display=isMulti?'':'none';
+  const badge=document.getElementById('detected-kind');
+  if(badge){
+    badge.textContent=kind;
+    badge.className='badge badge-'+(kind==='video'?'pending':kind==='channel'?'queued':'succeeded');
+  }
 }
 function autoDetectKind(){
   const url=document.getElementById('url').value.trim().toLowerCase();
@@ -789,6 +804,35 @@ function autoDetectKind(){
   else if(url.includes('/@')||url.includes('/channel/')||url.includes('/c/')||url.includes('/user/'))kind.value='channel';
   else kind.value='video';
   onKindChange(kind.value);
+}
+async function searchYT(){
+  const q=document.getElementById('search-q').value.trim();
+  if(!q){toast('Enter search keywords','info');return;}
+  const res=await fetch('/api/v1/youtube/search?q='+encodeURIComponent(q));
+  const data=await res.json();
+  if(!res.ok){toast('Search failed: '+(data.error?.message||''),'err');return;}
+  const tbody=document.getElementById('search-tbody');
+  const wrap=document.getElementById('search-results');
+  tbody.innerHTML='';
+  if(!data.results||data.results.length===0){
+    tbody.innerHTML='<tr><td colspan="4" class="empty">No results found</td></tr>';
+    wrap.style.display='';return;
+  }
+  data.results.forEach(r=>{
+    const dur=r.duration>0?(Math.floor(r.duration/60)+'m'+(r.duration%%60)+'s'):'—';
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td title="'+r.title.replace(/"/g,'&quot;')+'">'+r.title+'</td>'+
+      '<td class="src-meta" title="'+(r.channel||'').replace(/"/g,'&quot;')+'">'+(r.channel||'—')+'</td>'+
+      '<td class="src-meta">'+dur+'</td>'+
+      '<td><button class="btn-sm btn-blue" onclick="selectResult(\''+r.url.replace(/'/g,"\\'")+'\')">Select</button></td>';
+    tbody.appendChild(tr);
+  });
+  wrap.style.display='';
+}
+function selectResult(url){
+  document.getElementById('url').value=url;
+  autoDetectKind();
+  toast('URL selected — review options and click Add Source','ok');
 }
 async function submitForm(){
   const kind=document.getElementById('kind').value;
@@ -1028,8 +1072,12 @@ async function uploadCookies(){
     const res=await fetch('/api/v1/cookies',opts);
     const data=await res.json();
     if(res.ok){
-      toast('Cookies saved','ok');
-      setTimeout(()=>location.reload(),400);
+      toast('Cookies saved — validating…','ok');
+      fetch('/api/v1/cookies/validate',{method:'POST'}).then(r=>r.json()).then(d=>{
+        if(d.valid)toast('Cookies are valid!','ok');
+        else toast('Cookies may be expired: '+(d.message||''),'err');
+      }).catch(()=>{});
+      setTimeout(()=>location.reload(),2000);
     }else{
       st.textContent=data.error?.message||'Upload failed';st.style.color='#fca5a5';
       toast('Failed: '+(data.error?.message||'unknown'),'err');
@@ -1121,6 +1169,12 @@ window.onload=function(){
   // Restore scroll position after reload
   const sy=sessionStorage.getItem('scrollY');
   if(sy){window.scrollTo(0,parseInt(sy));sessionStorage.removeItem('scrollY');}
+  // Auto-validate cookies if not recently tested
+  fetch('/api/v1/cookies/status').then(r=>r.json()).then(d=>{
+    if(d.exists&&!d.valid&&!d.validatedAt){
+      fetch('/api/v1/cookies/validate',{method:'POST'}).catch(()=>{});
+    }
+  }).catch(()=>{});
   // Init pagers
   initPager('sources-tbody','pager-sources',20);
   initPager('media-tbody','pager-media',20);

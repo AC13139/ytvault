@@ -47,10 +47,19 @@ type VideoInfo struct {
 type probeResult struct {
 	ID         string        `json:"id"`
 	Title      string        `json:"title"`
+	Channel    string        `json:"channel"`
+	Uploader   string        `json:"uploader"`
 	WebpageURL string        `json:"webpage_url"`
 	URL        string        `json:"url"`
 	Duration   *float64      `json:"duration"` // null or number
 	Entries    []probeResult `json:"entries"`
+}
+
+func (p probeResult) channelName() string {
+	if p.Channel != "" {
+		return p.Channel
+	}
+	return p.Uploader
 }
 
 func (p probeResult) videoURL() string {
@@ -131,6 +140,56 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 	}
 	flatten(root.Entries)
 	return root.Title, videos, nil
+}
+
+// SearchResult represents a single YouTube search result.
+type SearchResult struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	Channel  string `json:"channel"`
+	Duration int    `json:"duration"`
+}
+
+// Search searches YouTube for the given query and returns up to limit results.
+func Search(query string, limit int) ([]SearchResult, error) {
+	if limit < 1 || limit > 20 {
+		limit = 10
+	}
+	searchURL := fmt.Sprintf("ytsearch%d:%s", limit, query)
+	args := append(baseArgs(), "--flat-playlist", "-J", "--no-warnings", searchURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, fmt.Errorf("yt-dlp exec: %w", err)
+	}
+
+	var root probeResult
+	if err := json.Unmarshal(out, &root); err != nil {
+		return nil, fmt.Errorf("parse yt-dlp output: %w", err)
+	}
+
+	var results []SearchResult
+	for _, e := range root.Entries {
+		if e.ID == "" {
+			continue
+		}
+		results = append(results, SearchResult{
+			ID:       e.ID,
+			Title:    e.Title,
+			URL:      e.videoURL(),
+			Channel:  e.channelName(),
+			Duration: e.duration(),
+		})
+	}
+	return results, nil
 }
 
 // indexWithDateFilter uses --dump-json (per-line JSON, full extraction) with

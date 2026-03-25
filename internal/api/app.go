@@ -79,6 +79,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
+	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
 	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
@@ -326,6 +327,21 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
 		},
 	})
+}
+
+func (a *App) handleYouTubeSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "missing_query", "q parameter is required")
+		return
+	}
+	limit := 10
+	results, err := ytdlp.Search(q, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "search_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 func (a *App) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
