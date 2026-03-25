@@ -433,7 +433,11 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	}
 	autoRefreshJS := ""
 	if hasRunning {
-		autoRefreshJS = "setTimeout(()=>location.reload(),5000);"
+		autoRefreshJS = `(function poll(){
+  const tab=location.hash.slice(1);
+  if(tab==='settings'||tab==='cookies')return;
+  setTimeout(()=>location.reload(),5000);
+})();`
 	}
 
 	// ── Page template ─────────────────────────────────────────────────────────
@@ -678,10 +682,23 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <span class="src-meta" id="cfg-dldir" style="padding:7px 0">Loading…</span>
     </div>
     <div class="form-row">
-      <label>Filename template</label>
-      <input type="text" id="cfg-filename" placeholder="%%(uploader,channel,id)s/%%(title)s [%%(id)s].%%(ext)s">
+      <label>Folder name</label>
+      <select id="cfg-folder">
+        <option value="channel">Channel name</option>
+        <option value="date">Release date (yyyy-mm-dd)</option>
+        <option value="channel_year">Channel / Year (yyyy)</option>
+        <option value="channel_month">Channel / Month (yyyy-mm)</option>
+        <option value="channel_day">Channel / Date (yyyy-mm-dd)</option>
+        <option value="playlist">Playlist name</option>
+      </select>
     </div>
-    <p class="src-meta" style="margin:4px 0 10px 0">Uses <a href="https://github.com/yt-dlp/yt-dlp#output-template" target="_blank" style="color:#60a5fa">yt-dlp output template</a> syntax. Leave empty for default.</p>
+    <div class="form-row">
+      <label>File name</label>
+      <select id="cfg-file">
+        <option value="date_title">Date + Title (yyyy-mm-dd Title [id].ext)</option>
+        <option value="title">Title only (Title [id].ext)</option>
+      </select>
+    </div>
     <div class="form-row">
       <label>Video quality</label>
       <select id="cfg-format">
@@ -964,15 +981,17 @@ async function loadConfig(){
     const res=await fetch('/api/v1/config');
     const data=await res.json();
     document.getElementById('cfg-dldir').textContent=data.downloadDir||'—';
-    document.getElementById('cfg-filename').value=data.config?.filenameTemplate||'';
-    const fmt=document.getElementById('cfg-format');
-    const v=data.config?.videoFormat||'';
-    for(let i=0;i<fmt.options.length;i++){if(fmt.options[i].value===v){fmt.selectedIndex=i;break;}}
+    const c=data.config||{};
+    const setSelect=(id,val)=>{const el=document.getElementById(id);for(let i=0;i<el.options.length;i++){if(el.options[i].value===val){el.selectedIndex=i;break;}}};
+    setSelect('cfg-folder',c.folderFormat||'channel');
+    setSelect('cfg-file',c.fileFormat||'date_title');
+    setSelect('cfg-format',c.videoFormat||'');
   }catch(e){}
 }
 async function saveConfig(){
   const body={
-    filenameTemplate:document.getElementById('cfg-filename').value.trim(),
+    folderFormat:document.getElementById('cfg-folder').value,
+    fileFormat:document.getElementById('cfg-file').value,
     videoFormat:document.getElementById('cfg-format').value,
     maxConcurrent:1
   };

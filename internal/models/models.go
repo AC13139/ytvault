@@ -97,7 +97,9 @@ type Schedule struct {
 
 // Config stores user-configurable settings with sensible defaults.
 type Config struct {
-	FilenameTemplate string `json:"filenameTemplate,omitempty"` // yt-dlp output template
+	FolderFormat     string `json:"folderFormat,omitempty"`     // folder naming preset key
+	FileFormat       string `json:"fileFormat,omitempty"`       // file naming preset key
+	FilenameTemplate string `json:"filenameTemplate,omitempty"` // resolved yt-dlp output template
 	VideoFormat      string `json:"videoFormat,omitempty"`      // yt-dlp -f value
 	MaxConcurrent    int    `json:"maxConcurrent,omitempty"`    // future: concurrent downloads
 }

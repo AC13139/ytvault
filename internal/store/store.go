@@ -41,7 +41,37 @@ func New(path string) (*Store, error) {
 	if err := s.load(); err != nil {
 		return nil, err
 	}
+	// Recover orphaned running tasks/media from a prior crash or restart.
+	s.recoverOrphans()
 	return s, nil
+}
+
+// recoverOrphans marks any running tasks as failed and any downloading media
+// as pending on startup — these were interrupted by a container restart.
+func (s *Store) recoverOrphans() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	now := time.Now().UTC()
+	for i := range s.state.Tasks {
+		if s.state.Tasks[i].Status == models.TaskStatusRunning {
+			s.state.Tasks[i].Status = models.TaskStatusFailed
+			s.state.Tasks[i].ErrorCode = "interrupted"
+			s.state.Tasks[i].ErrorMessage = "task was interrupted by server restart"
+			s.state.Tasks[i].CompletedAt = &now
+			changed = true
+		}
+	}
+	for i := range s.state.MediaItems {
+		if s.state.MediaItems[i].Status == models.MediaItemStatusDownloading {
+			s.state.MediaItems[i].Status = models.MediaItemStatusPending
+			s.state.MediaItems[i].UpdatedAt = now
+			changed = true
+		}
+	}
+	if changed {
+		_ = s.saveLocked()
+	}
 }
 
 func (s *Store) load() error {
@@ -669,23 +699,56 @@ func (s *Store) DeleteCompletedTasks() int {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-const DefaultFilenameTemplate = "%(uploader,channel,id)s/%(title)s [%(id)s].%(ext)s"
 const DefaultVideoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
+
+// Folder naming presets (yt-dlp output template fragments)
+var FolderPresets = map[string]string{
+	"channel":           "%(uploader,channel,id)s",
+	"date":              "%(upload_date>%Y-%m-%d)s",
+	"channel_year":      "%(uploader,channel,id)s/%(upload_date>%Y)s",
+	"channel_month":     "%(uploader,channel,id)s/%(upload_date>%Y-%m)s",
+	"channel_day":       "%(uploader,channel,id)s/%(upload_date>%Y-%m-%d)s",
+	"playlist":          "%(playlist_title,uploader,channel,id)s",
+}
+
+// File naming presets
+var FilePresets = map[string]string{
+	"date_title": "%(upload_date>%Y-%m-%d)s %(title)s [%(id)s].%(ext)s",
+	"title":      "%(title)s [%(id)s].%(ext)s",
+}
+
+func resolveTemplate(folderKey, fileKey string) string {
+	folder, ok := FolderPresets[folderKey]
+	if !ok {
+		folder = FolderPresets["channel"]
+	}
+	file, ok := FilePresets[fileKey]
+	if !ok {
+		file = FilePresets["date_title"]
+	}
+	return folder + "/" + file
+}
 
 func (s *Store) GetConfig() models.Config {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.state.Config == nil {
 		return models.Config{
-			FilenameTemplate: DefaultFilenameTemplate,
+			FolderFormat:     "channel",
+			FileFormat:       "date_title",
+			FilenameTemplate: resolveTemplate("channel", "date_title"),
 			VideoFormat:      DefaultVideoFormat,
 			MaxConcurrent:    1,
 		}
 	}
 	c := *s.state.Config
-	if c.FilenameTemplate == "" {
-		c.FilenameTemplate = DefaultFilenameTemplate
+	if c.FolderFormat == "" {
+		c.FolderFormat = "channel"
 	}
+	if c.FileFormat == "" {
+		c.FileFormat = "date_title"
+	}
+	c.FilenameTemplate = resolveTemplate(c.FolderFormat, c.FileFormat)
 	if c.VideoFormat == "" {
 		c.VideoFormat = DefaultVideoFormat
 	}
@@ -698,6 +761,8 @@ func (s *Store) GetConfig() models.Config {
 func (s *Store) UpdateConfig(cfg models.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Resolve the template from presets
+	cfg.FilenameTemplate = resolveTemplate(cfg.FolderFormat, cfg.FileFormat)
 	s.state.Config = &cfg
 	return s.saveLocked()
 }
