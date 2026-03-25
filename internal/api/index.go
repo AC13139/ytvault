@@ -239,7 +239,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(sourceRows) == 0 {
-		sourceRows = []string{`<tr><td colspan="4" class="empty">No sources yet — add one above</td></tr>`}
+		sourceRows = []string{`<tr><td colspan="4" class="empty">No sources yet.<br><span class="src-meta">Paste a YouTube URL above to get started. Videos will be scanned automatically.</span></td></tr>`}
 	}
 
 	// ── Media filter options ──────────────────────────────────────────────────
@@ -261,23 +261,42 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	for _, m := range allMedia {
 		dur := "—"
 		if m.Duration > 0 {
-			dur = fmt.Sprintf("%dm%ds", int(m.Duration)/60, int(m.Duration)%60)
+			h, min, sec := m.Duration/3600, (m.Duration%3600)/60, m.Duration%60
+			if h > 0 {
+				dur = fmt.Sprintf("%dh%dm%ds", h, min, sec)
+			} else {
+				dur = fmt.Sprintf("%dm%ds", min, sec)
+			}
 		}
-		fp := m.FilePath
-		if fp == "" {
-			fp = "—"
+
+		// Action buttons based on status
+		action := ""
+		mid := html.EscapeString(m.ID)
+		switch m.Status {
+		case models.MediaItemStatusFailed:
+			action = fmt.Sprintf(
+				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>retryMedia('%s'))">Retry</button>`+
+					` <button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`,
+				mid, mid)
+		case models.MediaItemStatusPending:
+			action = fmt.Sprintf(
+				`<button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
+		case models.MediaItemStatusDone:
+			action = fmt.Sprintf(
+				`<button class="btn-sm btn-gray" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
 		}
+
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s"><td>%s</td><td class="src-meta">%s</td><td>%s</td><td class="src-meta">%s</td></tr>`,
+			`<tr data-source="%s"><td>%s</td><td class="src-meta">%s</td><td>%s</td><td>%s</td></tr>`,
 			html.EscapeString(m.SourceID),
 			html.EscapeString(m.Title),
 			html.EscapeString(dur),
 			statusBadge(string(m.Status)),
-			html.EscapeString(fp),
+			action,
 		))
 	}
 	if len(mediaRows) == 0 {
-		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet — add a source and scan it</td></tr>`}
+		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet.<br><span class="src-meta">Add a source from the Sources tab — videos will appear here after scanning.</span></td></tr>`}
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
@@ -426,7 +445,7 @@ nav{display:flex;align-items:center;gap:12px;padding:0 20px;height:52px;backgrou
 .nav-tab:hover{color:#e5e7eb;background:#1e293b}
 .nav-tab.active{color:#60a5fa;background:#172033}
 .nav-stats{margin-left:auto;display:flex;gap:6px}
-.stat-pill{background:#172033;border:1px solid #1e3a5f;color:#93c5fd;font-size:11px;padding:2px 9px;border-radius:999px}
+.stat-pill{background:#172033;border:1px solid #1e3a5f;color:#93c5fd;font-size:11px;padding:2px 9px;border-radius:999px;cursor:pointer}.stat-pill:hover{background:#1e3a5f}
 .main{padding:20px;max-width:1300px;margin:0 auto}
 .tab-content{display:none}.tab-content.active{display:block}
 .card{background:#121a2b;border:1px solid #1e293b;border-radius:12px;padding:18px;margin-bottom:18px}
@@ -493,10 +512,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')">Cookies %s</button>
   </div>
   <div class="nav-stats">
-    <span class="stat-pill">%d sources</span>
-    <span class="stat-pill">%d media</span>
-    <span class="stat-pill">%d tasks</span>
-    <span class="stat-pill">%d schedules</span>
+    <span class="stat-pill" onclick="showTab('sources')">%d sources</span>
+    <span class="stat-pill" onclick="showTab('media')">%d media</span>
+    <span class="stat-pill" onclick="showTab('tasks')">%d tasks</span>
+    <span class="stat-pill" onclick="showTab('schedules')">%d schedules</span>
   </div>
 </nav>
 <div id="toast"></div>
@@ -549,7 +568,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Title</th><th>Duration</th><th>Status</th><th>File</th></tr></thead>
+      <thead><tr><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="media-tbody">%s</tbody>
     </table></div>
   </div>
@@ -791,6 +810,23 @@ function viewMedia(sourceId){
   showTab('media');
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
+}
+async function retryMedia(mediaId){
+  const res=await fetch('/api/v1/media/'+mediaId+'/retry',{method:'POST'});
+  if(res.ok||res.status===202){toast('Retrying download…','ok');setTimeout(()=>location.reload(),400);}
+  else{const d=await res.json();toast('Retry failed: '+(d.error?.message||''),'err');}
+}
+function dismissMedia(btn,mediaId){
+  if(btn.dataset.confirm!=='1'){
+    btn.dataset.confirm='1';btn.textContent='Sure?';btn.className='btn-sm btn-red';
+    setTimeout(()=>{if(btn.dataset.confirm==='1'){btn.dataset.confirm='0';btn.textContent='Remove';btn.className='btn-sm btn-gray';}},3000);
+    return;
+  }
+  btn.disabled=true;btn.textContent='…';
+  fetch('/api/v1/media/'+mediaId,{method:'DELETE'}).then(res=>{
+    if(res.ok||res.status===204){btn.closest('tr').remove();}
+    else{btn.disabled=false;btn.textContent='Remove';toast('Failed','err');}
+  }).catch(()=>{btn.disabled=false;});
 }
 function deleteSource(btn,sourceId){
   if(btn.dataset.confirm!=='1'){

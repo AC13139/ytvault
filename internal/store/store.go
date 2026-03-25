@@ -447,6 +447,51 @@ func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, 
 	return fmt.Errorf("media item %s not found", id)
 }
 
+// DeleteMediaItem removes a media item and its related completed tasks.
+func (s *Store) DeleteMediaItem(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	for i, m := range s.state.MediaItems {
+		if m.ID == id {
+			s.state.MediaItems = append(s.state.MediaItems[:i], s.state.MediaItems[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("media item %s not found", id)
+	}
+	// Remove related completed tasks
+	var tasks []models.Task
+	for _, t := range s.state.Tasks {
+		if t.EntityID == id && (t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed) {
+			continue
+		}
+		tasks = append(tasks, t)
+	}
+	s.state.Tasks = tasks
+	return s.saveLocked()
+}
+
+// RetryMediaItem resets a failed media item to pending status.
+func (s *Store) RetryMediaItem(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.MediaItems {
+		if s.state.MediaItems[i].ID == id {
+			if s.state.MediaItems[i].Status != models.MediaItemStatusFailed {
+				return fmt.Errorf("can only retry failed items, current status: %s", s.state.MediaItems[i].Status)
+			}
+			s.state.MediaItems[i].Status = models.MediaItemStatusPending
+			s.state.MediaItems[i].ErrorMsg = ""
+			s.state.MediaItems[i].UpdatedAt = time.Now().UTC()
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("media item %s not found", id)
+}
+
 // CreateDownloadTask creates a queued download task for a single media item.
 // Returns an error if the item does not exist or already has an active
 // (queued or running) download task.

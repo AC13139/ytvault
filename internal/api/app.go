@@ -68,6 +68,8 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/{id}/run", a.handleRunTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/start", a.handleStartTask)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", a.handleDeleteSource)
+	mux.HandleFunc("DELETE /api/v1/media/{id}", a.handleDeleteMedia)
+	mux.HandleFunc("POST /api/v1/media/{id}/retry", a.handleRetryMedia)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks/{id}", a.handleDeleteTask)
 	mux.HandleFunc("DELETE /api/v1/tasks", a.handleDeleteCompletedTasks)
@@ -318,6 +320,34 @@ func (a *App) handleExecuteTask(w http.ResponseWriter, r *http.Request) {
 			"note":    "Execution skeleton is wired, but real index work is not connected yet.",
 		},
 	})
+}
+
+func (a *App) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
+	if err := a.store.DeleteMediaItem(r.PathValue("id")); err != nil {
+		writeError(w, http.StatusNotFound, "delete_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleRetryMedia(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := a.store.RetryMediaItem(id); err != nil {
+		writeError(w, http.StatusBadRequest, "retry_failed", err.Error())
+		return
+	}
+	// Create and start a download task
+	task, err := a.store.CreateDownloadTask(id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "task_failed", err.Error())
+		return
+	}
+	started, err := a.worker.StartTask(task.ID)
+	if err != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{"task": task, "message": "retrying but could not auto-start"})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
 }
 
 func (a *App) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
