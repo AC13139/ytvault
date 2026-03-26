@@ -246,37 +246,36 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 
-		// Detail cell — show only title, kind badge, and URL as clickable link
-		detail := fmt.Sprintf(
-			`<div class="src-title" title="%s">%s</div>`+
-				`<div class="tags">%s</div>`+
-				`<div class="src-meta" title="%s"><a href="%s" target="_blank" style="color:#60a5fa">%s</a></div>`,
+		// Progress percentage
+		pct := 0
+		if mediaCount > 0 {
+			pct = doneCount * 100 / mediaCount
+		}
+
+		sourceRows = append(sourceRows, fmt.Sprintf(
+			`<div class="source-card">`+
+				`<div class="source-header">`+
+				`<div class="src-title" title="%s">%s</div>`+
+				`%s`+
+				`</div>`+
+				`<div class="src-meta" title="%s"><a href="%s" target="_blank" style="color:rgba(96,165,250,0.8);text-decoration:none">%s</a></div>`+
+				`<div style="display:flex;align-items:center;gap:8px;margin-top:6px">`+
+				`<div class="progress-bar" style="flex:1"><div class="fill" style="width:%d%%"></div></div>`+
+				`<span class="src-meta">%d/%d</span>`+
+				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')">View</button>`+
+				`</div>`+
+				`<div class="card-actions">%s</div>`+
+				`</div>`,
 			html.EscapeString(s.Title), html.EscapeString(s.Title),
 			tag(string(s.Kind)),
 			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
-		)
-
-		// Media cell
-		mediaInfo := fmt.Sprintf(`<span class="src-meta">%d indexed`, mediaCount)
-		if doneCount > 0 {
-			mediaInfo += fmt.Sprintf(`, %d downloaded`, doneCount)
-		}
-		mediaInfo += `</span>`
-		viewBtn := fmt.Sprintf(
-			`<br><button class="btn-sm btn-blue" style="margin-top:4px" onclick="viewMedia('%s')">View media</button>`,
+			pct, doneCount, mediaCount,
 			html.EscapeString(s.ID),
-		)
-		mediaCell := mediaInfo + viewBtn
-
-		sourceRows = append(sourceRows, fmt.Sprintf(
-			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
-			detail,
-			mediaCell,
 			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }(), s.RetentionDays),
 		))
 	}
 	if len(sourceRows) == 0 {
-		sourceRows = []string{`<tr><td colspan="3" class="empty">No sources yet.<br><span class="src-meta">Use the + New tab to add a YouTube source.</span></td></tr>`}
+		sourceRows = []string{`<div class="empty-state"><div class="empty-icon">&#128250;</div><div class="empty-text">No sources yet</div><div class="empty-sub">Click + New Source in the sidebar to get started</div></div>`}
 	}
 
 	// ── Media filter options ──────────────────────────────────────────────────
@@ -339,12 +338,28 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		}
 
-		thumb := fmt.Sprintf(`<img src="https://img.youtube.com/vi/%s/mqdefault.jpg" style="width:100px;border-radius:8px;vertical-align:middle" loading="lazy" onerror="this.style.display='none'">`,
-			html.EscapeString(m.VideoID))
+		// Status icon for thumbnail overlay
+		stClass := "st-pending"
+		stIcon := "&#9679;"
+		switch m.Status {
+		case models.MediaItemStatusDone:
+			stClass = "st-done"; stIcon = "&#10003;"
+		case models.MediaItemStatusFailed:
+			stClass = "st-failed"; stIcon = "&#10007;"
+		case models.MediaItemStatusDownloading:
+			stClass = "st-downloading"; stIcon = "&#8595;"
+		case models.MediaItemStatusMissing:
+			stClass = "st-missing"; stIcon = "?"
+		}
+
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s"><td style="width:110px;white-space:normal">%s</td><td title="%s">%s</td><td class="src-meta">%s</td><td>%s</td><td class="row-actions">%s</td></tr>`,
+			`<tr data-source="%s">`+
+				`<td style="width:130px;padding:8px"><div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div></td>`+
+				`<td style="white-space:normal;max-width:400px"><div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span></div></td>`+
+				`<td>%s</td>`+
+				`<td class="row-actions">%s</td></tr>`,
 			html.EscapeString(m.SourceID),
-			thumb,
+			html.EscapeString(m.VideoID), stClass, stIcon,
 			html.EscapeString(m.Title), html.EscapeString(m.Title),
 			html.EscapeString(dur),
 			statusBadge(string(m.Status)),
@@ -428,7 +443,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(taskRows) == 0 {
-		taskRows = []string{`<tr><td colspan="5" class="empty">No tasks yet</td></tr>`}
+		taskRows = []string{`<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#9889;</div><div class="empty-text">All systems go</div><div class="empty-sub">No active tasks</div></div></td></tr>`}
 	}
 
 	// ── Schedule rows ─────────────────────────────────────────────────────────
@@ -525,21 +540,32 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',system-ui,sans-serif;background:linear-gradient(135deg,#0a0e1a 0%%,#0d1525 50%%,#0a1628 100%%);color:#e2e8f0;min-height:100vh}
+body{font-family:'Inter',system-ui,sans-serif;background:#080c16;color:#e2e8f0;min-height:100vh}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20%% 0%%,rgba(59,130,246,0.08) 0%%,transparent 50%%),radial-gradient(ellipse at 80%% 100%%,rgba(124,58,237,0.06) 0%%,transparent 50%%);pointer-events:none;z-index:0}
 /* ── Sidebar ── */
-.sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:rgba(10,15,28,0.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;z-index:200;padding:0}
-.sidebar-logo{padding:24px 20px 20px;font-size:20px;font-weight:700;color:#f1f5f9;letter-spacing:-0.5px}
+.sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:rgba(8,12,22,0.92);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right:1px solid rgba(255,255,255,0.04);display:flex;flex-direction:column;z-index:200;padding:0;transition:width 0.2s}
+.sidebar.collapsed{width:56px}
+.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .count,.sidebar.collapsed .sidebar-logo span{display:none}
+.sidebar.collapsed .sidebar-logo{padding:16px 12px;text-align:center}
+.sidebar-logo{padding:24px 20px 20px;font-size:20px;font-weight:700;color:#f1f5f9;letter-spacing:-0.5px;display:flex;align-items:center;justify-content:space-between}
 .sidebar-logo span{color:#3b82f6}
-.sidebar-section{padding:0 12px;margin-bottom:4px}
-.sidebar-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#475569;padding:12px 8px 6px}
-.nav-tab{display:flex;align-items:center;gap:10px;width:100%%;background:none;border:none;color:#94a3b8;font-size:13px;font-weight:500;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left}
-.nav-tab:hover{color:#e2e8f0;background:rgba(255,255,255,0.05)}
-.nav-tab.active{color:#60a5fa;background:rgba(59,130,246,0.1);box-shadow:inset 3px 0 0 #3b82f6}
+.sidebar-toggle{background:none;border:none;color:#475569;font-size:16px;cursor:pointer;padding:4px;border-radius:6px}
+.sidebar-toggle:hover{color:#94a3b8;background:rgba(255,255,255,0.05)}
+.sidebar-section{padding:0 10px;margin-bottom:4px}
+.sidebar-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#334155;padding:14px 8px 6px}
+.nav-tab{position:relative;display:flex;align-items:center;gap:10px;width:100%%;background:none;border:none;color:#94a3b8;font-size:13px;font-weight:500;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left;border-left:3px solid transparent}
+.nav-tab:hover{color:#e2e8f0;background:rgba(255,255,255,0.04)}
+.nav-tab.active{color:#60a5fa;background:rgba(59,130,246,0.08);border-left-color:#3b82f6;box-shadow:0 0 20px rgba(59,130,246,0.08)}
 .nav-tab .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
-.nav-tab .count{margin-left:auto;font-size:11px;color:#475569;font-weight:400}
-.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid rgba(255,255,255,0.04)}
+.nav-tab .count{margin-left:auto;font-size:10px;color:#475569;font-weight:500;background:rgba(255,255,255,0.04);padding:1px 7px;border-radius:99px}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%%;margin-left:auto;flex-shrink:0}
+.status-dot.ok{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
+.status-dot.warn{background:#f59e0b;box-shadow:0 0 8px rgba(245,158,11,0.5);animation:pulse 1.5s infinite}
+.status-dot.err{background:#ef4444;box-shadow:0 0 8px rgba(239,68,68,0.5)}
+.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid rgba(255,255,255,0.03)}
 /* ── Main area ── */
-.main{margin-left:220px;padding:28px 32px;min-height:100vh}
+.main{margin-left:220px;padding:28px 32px;min-height:100vh;position:relative;z-index:1;transition:margin-left 0.2s}
+.sidebar.collapsed ~ .main{margin-left:56px}
 .page-title{font-size:22px;font-weight:700;color:#f1f5f9;margin-bottom:20px;letter-spacing:-0.3px}
 .tab-content{display:none}.tab-content.active{display:block}
 /* ── Glass cards ── */
@@ -556,7 +582,8 @@ select:focus,input:focus,textarea:focus{outline:none;border-color:rgba(59,130,24
 button{border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
 .btn-primary{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;padding:9px 20px;box-shadow:0 2px 12px rgba(37,99,235,0.3)}
 .btn-primary:hover{background:linear-gradient(135deg,#1d4ed8,#2563eb);box-shadow:0 4px 16px rgba(37,99,235,0.4);transform:translateY(-1px)}
-.btn-sm{padding:4px 10px;font-size:12px;border-radius:8px}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:8px;transition:all 0.15s}
+.btn-sm:hover{transform:translateY(-1px)}
 .btn-blue{background:rgba(30,58,95,0.7);color:#93c5fd;border:1px solid rgba(59,130,246,0.2)}
 .btn-blue:hover{background:rgba(30,58,95,0.9);box-shadow:0 0 12px rgba(59,130,246,0.15)}
 .btn-green{background:rgba(20,83,45,0.7);color:#86efac;border:1px solid rgba(34,197,94,0.2)}
@@ -592,10 +619,39 @@ tr:hover .row-actions{opacity:1}
 .badge-enabled::before{content:'';width:6px;height:6px;border-radius:50%%;background:#86efac}
 .badge-disabled{background:rgba(30,41,59,0.6);color:#94a3b8}
 @keyframes pulse{0%%,100%%{opacity:1}50%%{opacity:0.3}}
+@keyframes shimmer{0%%{background-position:-200%% 0}100%%{background-position:200%% 0}}
+.badge-running,.badge-downloading{position:relative;overflow:hidden}
+.badge-running::after,.badge-downloading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);background-size:200%% 100%%;animation:shimmer 2s infinite}
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:48px 24px}
+.empty-state .empty-icon{font-size:40px;margin-bottom:12px;opacity:0.3}
+.empty-state .empty-text{color:#475569;font-size:14px}
+.empty-state .empty-sub{color:#334155;font-size:12px;margin-top:4px}
 .tag{display:inline-flex;align-items:center;background:rgba(23,32,51,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:999px;padding:2px 8px;font-size:11px;color:#93c5fd}
 .src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src-meta{color:#64748b;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-meta{color:#475569;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
+/* ── Source cards ── */
+.source-card{background:linear-gradient(135deg,rgba(15,23,42,0.7),rgba(20,28,50,0.5));backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.05);border-radius:14px;padding:18px;margin-bottom:12px;transition:all 0.2s}
+.source-card:hover{border-color:rgba(59,130,246,0.15);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.source-card:hover .card-actions{opacity:1;transform:translateY(0)}
+.source-card .card-actions{opacity:0;transform:translateY(4px);transition:all 0.2s;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.source-card .source-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.source-card .source-header .src-title{font-size:15px;flex:1}
+.progress-bar{height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin:6px 0}
+.progress-bar .fill{height:100%%;border-radius:2px;background:linear-gradient(90deg,#3b82f6,#22c55e);transition:width 0.3s}
+/* ── Media thumbnails ── */
+.thumb-wrap{position:relative;width:120px;min-width:120px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(15,23,42,0.8)}
+.thumb-wrap img{width:100%%;height:100%%;object-fit:cover;display:block}
+.thumb-status{position:absolute;bottom:4px;right:4px;width:18px;height:18px;border-radius:50%%;display:flex;align-items:center;justify-content:center;font-size:10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1)}
+.thumb-status.st-done{background:rgba(20,83,45,0.8);color:#86efac}
+.thumb-status.st-pending{background:rgba(30,41,59,0.8);color:#94a3b8}
+.thumb-status.st-failed{background:rgba(69,10,10,0.8);color:#fca5a5}
+.thumb-status.st-downloading{background:rgba(59,29,0,0.8);color:#fb923c}
+.thumb-status.st-missing{background:rgba(67,20,7,0.8);color:#fb923c}
+.media-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.media-info .m-title{font-weight:600;color:#f1f5f9;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-info .m-sub{font-size:12px;color:#475569}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
 /* ── Toast ── */
@@ -613,12 +669,12 @@ tr:hover .row-actions{opacity:1}
 .pager button:hover:not(:disabled){background:rgba(30,41,59,0.9);color:#e2e8f0}
 .pager button:disabled{opacity:0.3;cursor:default}
 /* ── Responsive ── */
-@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-tab span:not(.icon),.sidebar-label,.sidebar-logo span,.nav-tab .count{display:none}.sidebar-logo{padding:16px 12px;font-size:16px}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}}
+@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-label,.sidebar-label,.sidebar-logo span,.nav-tab .count,.sidebar-toggle{display:none}.sidebar-logo{padding:16px 12px;text-align:center}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}.thumb-wrap{width:80px;min-width:80px}}
 </style>
 </head>
 <body>
-<aside class="sidebar">
-  <div class="sidebar-logo">Yt<span>Vault</span></div>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">Yt<span>Vault</span> <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button></div>
   <div class="sidebar-section">
     <div class="sidebar-label">Main</div>
     <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span>New Source</span></button>
@@ -629,7 +685,7 @@ tr:hover .row-actions{opacity:1}
   </div>
   <div class="sidebar-section">
     <div class="sidebar-label">System</div>
-    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')"><span class="icon">&#128274;</span> <span>Cookies</span> %s</button>
+    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')"><span class="icon">&#128274;</span> <span class="nav-label">Cookies</span> %s</button>
     <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span>Settings</span></button>
   </div>
 </aside>
@@ -690,15 +746,9 @@ tr:hover .row-actions{opacity:1}
 </div>
 
 <div id="tab-sources" class="tab-content">
-  <h1 class="page-title">Sources</h1>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Sources (%d)</span></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Media</th><th>Actions</th></tr></thead>
-      <tbody id="sources-tbody">%s</tbody>
-    </table></div>
-    <div class="pager" id="pager-sources"></div>
-  </div>
+  <h1 class="page-title">Sources <span style="font-size:14px;color:#475569;font-weight:400">(%d)</span></h1>
+  <div id="sources-list">%s</div>
+  <div class="pager" id="pager-sources"></div>
 </div>
 
 <div id="tab-media" class="tab-content">
@@ -716,7 +766,7 @@ tr:hover .row-actions{opacity:1}
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th></th><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th style="width:130px"></th><th>Title</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="media-tbody">%s</tbody>
     </table></div>
     <div class="pager" id="pager-media"></div>
@@ -891,6 +941,11 @@ tr:hover .row-actions{opacity:1}
 
 </div>
 <script>
+function toggleSidebar(){
+  const s=document.getElementById('sidebar');
+  s.classList.toggle('collapsed');
+  sessionStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')?'1':'');
+}
 function showTab(name){
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -1300,8 +1355,9 @@ function initPager(tbodyId,pagerId,defaultSize){
   const pager=document.getElementById(pagerId);
   if(!tbody||!pager)return;
   let page=0,size=defaultSize||20;
-  function getRows(){return Array.from(tbody.querySelectorAll('tr')).filter(r=>r.style.display!=='none'||r.dataset.source!==undefined);}
-  function allRows(){return Array.from(tbody.querySelectorAll('tr'));}
+  const tag=tbody.tagName==='TBODY'?'tr':':scope > *';
+  function getRows(){return Array.from(tbody.querySelectorAll(tag)).filter(r=>r.style.display!=='none'||r.dataset.source!==undefined);}
+  function allRows(){return Array.from(tbody.querySelectorAll(tag));}
   function render(){
     const rows=allRows();
     const visibleRows=rows.filter(r=>!r.dataset.hidden);
@@ -1366,6 +1422,7 @@ async function saveConfig(){
   if(res.ok){toast('Settings saved','ok');}else{toast('Failed to save','err');}
 }
 window.onload=function(){
+  if(sessionStorage.getItem('sidebarCollapsed')==='1')document.getElementById('sidebar').classList.add('collapsed');
   const h=location.hash.slice(1);
   showTab(['new','sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
   // Restore scroll position after reload
@@ -1378,7 +1435,7 @@ window.onload=function(){
     }
   }).catch(()=>{});
   // Init pagers
-  initPager('sources-tbody','pager-sources',20);
+  initPager('sources-list','pager-sources',20);
   initPager('media-tbody','pager-media',20);
   initPager('tasks-tbody','pager-tasks',20);
   initPager('schedules-tbody','pager-schedules',20);
@@ -1395,7 +1452,14 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 
 	// Cookie status for nav badge and cookies tab
 	ckExists, ckSize, ckMtime, ckStatus, ckClass := a.cookieStatusForUI()
-	ckNavBadge := fmt.Sprintf(`<span class="badge %s" style="margin-left:4px;font-size:9px">%s</span>`, ckClass, html.EscapeString(ckStatus))
+	// Status dot for sidebar: ok=green, warn/pending=amber, failed=red
+	dotClass := "err"
+	if ckClass == "badge-succeeded" {
+		dotClass = "ok"
+	} else if ckClass == "badge-pending" {
+		dotClass = "warn"
+	}
+	ckNavBadge := fmt.Sprintf(`<span class="status-dot %s" title="%s"></span>`, dotClass, html.EscapeString(ckStatus))
 	ckPathDisplay := html.EscapeString(a.cookiesPath)
 	ckStatusBadge := fmt.Sprintf(`<span class="badge %s">%s</span>`, ckClass, html.EscapeString(ckStatus))
 	if !ckExists {
