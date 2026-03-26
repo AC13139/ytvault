@@ -360,21 +360,19 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s">`+
-				`<td style="width:130px;padding:8px"><div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div></td>`+
-				`<td style="white-space:normal;max-width:400px"><div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span></div></td>`+
-				`<td>%s</td>`+
-				`<td class="row-actions">%s</td></tr>`,
+			`<div class="media-row" data-source="%s">`+
+				`<div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div>`+
+				`<div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s &middot; %s</span></div>`+
+				`<div class="row-actions">%s</div></div>`,
 			html.EscapeString(m.SourceID),
 			html.EscapeString(m.VideoID), stClass, stIcon,
 			html.EscapeString(m.Title), html.EscapeString(m.Title),
-			html.EscapeString(dur),
-			statusBadge(string(m.Status)),
+			html.EscapeString(dur), statusBadge(string(m.Status)),
 			action,
 		))
 	}
 	if len(mediaRows) == 0 {
-		mediaRows = []string{`<tr><td colspan="5" class="empty">No media yet.<br><span class="src-meta">Add a source from the + New tab — videos will appear here after scanning.</span></td></tr>`}
+		mediaRows = []string{`<div class="empty-state"><div class="empty-icon">&#9654;</div><div class="empty-text">No media yet</div><div class="empty-sub">Add a source from + New Source — videos will appear here after scanning</div></div>`}
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
@@ -598,7 +596,8 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .nav-tab .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
 .nav-tab .count{margin-left:auto;font-size:10px;color:var(--text-muted);font-weight:500;background:var(--surface-hover);padding:1px 7px;border-radius:99px}
 .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%%;margin-left:auto;flex-shrink:0}
-.status-dot.ok{background:var(--success);box-shadow:0 0 8px rgba(16,185,129,0.5)}
+.status-dot.ok{background:var(--success);box-shadow:0 0 8px rgba(16,185,129,0.5);animation:pulse-gentle 3s infinite}
+@keyframes pulse-gentle{0%%,100%%{box-shadow:0 0 8px rgba(16,185,129,0.5)}50%%{box-shadow:0 0 14px rgba(16,185,129,0.7)}}
 .status-dot.warn{background:var(--warning);box-shadow:0 0 8px rgba(245,158,11,0.5);animation:pulse 1.5s infinite}
 .status-dot.err{background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,0.5)}
 .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-subtle)}
@@ -619,7 +618,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:12px;align-items:end}
 label{font-size:13px;color:var(--text-secondary);margin-bottom:3px;display:block;font-weight:500}
 select,input[type=text],textarea{width:100%%;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;transition:border-color 0.2s,background 0.3s}
-select:focus,input:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:var(--primary-glow)}
 /* ── Buttons ── */
 button{border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
 .btn-primary{background:linear-gradient(135deg,var(--primary),#60a5fa);color:#fff;padding:9px 20px;box-shadow:0 2px 12px var(--primary-glow)}
@@ -665,6 +664,15 @@ tr:hover .row-actions{opacity:1}
 .badge-running,.badge-downloading{position:relative;overflow:hidden}
 .badge-running::after,.badge-downloading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent);background-size:200%% 100%%;animation:shimmer 2s infinite}
 /* ── Empty state ── */
+/* ── Skeleton loader ── */
+.skeleton{border-radius:8px;background:linear-gradient(90deg,var(--border-subtle) 25%%,var(--surface-hover) 50%%,var(--border-subtle) 75%%);background-size:200%% 100%%;animation:skeleton-shimmer 1.5s infinite}
+@keyframes skeleton-shimmer{0%%{background-position:200%% 0}100%%{background-position:-200%% 0}}
+.skeleton-row{display:flex;align-items:center;gap:14px;padding:12px 0}
+.skeleton-thumb{width:120px;height:68px;border-radius:10px}
+.skeleton-text{height:14px;border-radius:4px}
+.skeleton-text.w60{width:60%%}
+.skeleton-text.w30{width:30%%}
+.skeleton-text.w20{width:20%%}
 .empty-state{text-align:center;padding:48px 24px}
 .empty-state .empty-icon{font-size:40px;margin-bottom:12px;opacity:0.3}
 .empty-state .empty-text{color:var(--text-secondary);font-size:14px}
@@ -713,9 +721,14 @@ tr:hover .row-actions{opacity:1}
 .thumb-status.st-failed{background:rgba(69,10,10,0.8);color:#fca5a5}
 .thumb-status.st-downloading{background:rgba(59,29,0,0.8);color:#fb923c}
 .thumb-status.st-missing{background:rgba(67,20,7,0.8);color:#fb923c}
-.media-info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.media-info .m-title{font-weight:600;color:var(--text);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.media-info .m-sub{font-size:12px;color:#475569}
+.media-info{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.media-info .m-title{font-weight:600;color:var(--text);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3}
+.media-info .m-sub{font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',ui-monospace,monospace}
+.media-row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border-subtle);transition:background 0.15s}
+.media-row:last-child{border-bottom:none}
+.media-row:hover{background:var(--surface-hover)}
+.media-row:hover .row-actions{opacity:1}
+.media-row .row-actions{opacity:0.3;transition:opacity 0.2s;display:flex;gap:6px;align-items:center;flex-shrink:0}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
 /* ── Toast ── */
@@ -768,10 +781,7 @@ tr:hover .row-actions{opacity:1}
       <button class="btn-primary" onclick="withLoading(this,searchYT)">Search</button>
     </div>
     <div id="search-results" style="display:none">
-      <div class="table-wrap"><table>
-        <thead><tr><th>Title</th><th>Channel</th><th>Duration</th><th></th></tr></thead>
-        <tbody id="search-tbody"></tbody>
-      </table></div>
+      <div id="search-tbody"></div>
     </div>
   </div>
   <div class="card">
@@ -832,10 +842,7 @@ tr:hover .row-actions{opacity:1}
         </select>
       </div>
     </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th style="width:130px"></th><th>Title</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody id="media-tbody">%s</tbody>
-    </table></div>
+    <div id="media-tbody">%s</div>
     <div class="pager" id="pager-media"></div>
   </div>
 </div>
@@ -1063,26 +1070,31 @@ function autoDetectKind(){
 async function searchYT(){
   const q=document.getElementById('search-q').value.trim();
   if(!q){toast('Enter search keywords','info');return;}
-  const res=await fetch('/api/v1/youtube/search?q='+encodeURIComponent(q));
-  const data=await res.json();
-  if(!res.ok){toast('Search failed: '+(data.error?.message||''),'err');return;}
   const tbody=document.getElementById('search-tbody');
   const wrap=document.getElementById('search-results');
+  // Show skeleton loaders
+  wrap.style.display='';
   tbody.innerHTML='';
+  for(let i=0;i<5;i++){
+    tbody.innerHTML+='<div class="skeleton-row"><div class="skeleton skeleton-thumb"></div><div style="flex:1;display:flex;flex-direction:column;gap:8px"><div class="skeleton skeleton-text w60"></div><div class="skeleton skeleton-text w30"></div></div><div class="skeleton skeleton-text w20" style="width:60px;height:28px"></div></div>';
+  }
+  const res=await fetch('/api/v1/youtube/search?q='+encodeURIComponent(q));
+  const data=await res.json();
+  tbody.innerHTML='';
+  if(!res.ok){toast('Search failed: '+(data.error?.message||''),'err');wrap.style.display='none';return;}
   if(!data.results||data.results.length===0){
-    tbody.innerHTML='<tr><td colspan="4" class="empty">No results found</td></tr>';
-    wrap.style.display='';return;
+    tbody.innerHTML='<div class="empty-state"><div class="empty-text">No results found</div></div>';
+    return;
   }
   data.results.forEach(r=>{
     const dur=r.duration>0?(Math.floor(r.duration/60)+'m'+(r.duration%%60)+'s'):'—';
-    const tr=document.createElement('tr');
-    tr.innerHTML='<td title="'+r.title.replace(/"/g,'&quot;')+'">'+r.title+'</td>'+
-      '<td class="src-meta" title="'+(r.channel||'').replace(/"/g,'&quot;')+'">'+(r.channel||'—')+'</td>'+
-      '<td class="src-meta">'+dur+'</td>'+
-      '<td><button class="btn-sm btn-blue" onclick="selectResult(\''+r.url.replace(/'/g,"\\'")+'\')">Select</button></td>';
-    tbody.appendChild(tr);
+    const d=document.createElement('div');
+    d.className='media-row';
+    d.innerHTML='<div class="thumb-wrap"><img src="https://img.youtube.com/vi/'+r.id+'/mqdefault.jpg" loading="lazy" onerror="this.style.display=\'none\'"></div>'+
+      '<div class="media-info"><span class="m-title" title="'+r.title.replace(/"/g,'&amp;quot;')+'">'+r.title+'</span><span class="m-sub">'+(r.channel||'—')+' &middot; '+dur+'</span></div>'+
+      '<button class="btn-sm btn-blue" onclick="selectResult(\''+r.url.replace(/'/g,"\\'")+'\')">Select</button>';
+    tbody.appendChild(d);
   });
-  wrap.style.display='';
 }
 function selectResult(url){
   document.getElementById('url').value=url;
@@ -1233,7 +1245,7 @@ function filterMedia(sourceId){
   if(window.pagers&&window.pagers['media-tbody']){
     window.pagers['media-tbody'].setFilter(tr=>sourceId===''||tr.dataset.source===sourceId);
   }else{
-    document.querySelectorAll('#media-tbody tr[data-source]').forEach(tr=>{
+    document.querySelectorAll('#media-tbody [data-source]').forEach(tr=>{
       tr.style.display=(sourceId===''||tr.dataset.source===sourceId)?'':'none';
     });
   }
