@@ -149,13 +149,17 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool)
 			sid, deleteBtn,
 		)
 	}
+	cleanBtn := fmt.Sprintf(
+		` <button class="btn-sm btn-gray" onclick="cleanupSource('%s')">Clean up</button>`,
+		sid,
+	)
 	return fmt.Sprintf(
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s%s`+
+			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s%s%s`+
 			`</div>`,
 		sid, buildDateAfterOptions(""),
-		sid, sid, schedBtn, deleteBtn,
+		sid, sid, schedBtn, cleanBtn, deleteBtn,
 	)
 }
 
@@ -274,24 +278,35 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 
-		// Action buttons based on status
-		action := ""
+		// Pin toggle + action buttons
 		mid := html.EscapeString(m.ID)
+		pinIcon := "☆"
+		pinTitle := "Pin (protect from cleanup)"
+		if m.Pinned {
+			pinIcon = "★"
+			pinTitle = "Unpin"
+		}
+		pinBtn := fmt.Sprintf(
+			`<span style="cursor:pointer;font-size:16px;color:%s" title="%s" onclick="togglePin('%s',this)">%s</span> `,
+			func() string { if m.Pinned { return "#fbbf24" }; return "#4b5563" }(),
+			pinTitle, mid, pinIcon,
+		)
+		action := pinBtn
 		switch m.Status {
 		case models.MediaItemStatusFailed:
-			action = fmt.Sprintf(
+			action += fmt.Sprintf(
 				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>retryMedia('%s'))">Retry</button>`+
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`,
 				mid, mid)
 		case models.MediaItemStatusPending:
-			action = fmt.Sprintf(
+			action += fmt.Sprintf(
 				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>downloadMedia('%s'))">Download</button>`+
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		case models.MediaItemStatusDone:
-			action = fmt.Sprintf(
+			action += fmt.Sprintf(
 				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
 		case models.MediaItemStatusMissing:
-			action = fmt.Sprintf(
+			action += fmt.Sprintf(
 				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>downloadMedia('%s'))">Re-download</button>`+
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		}
@@ -638,6 +653,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <span class="card-title">Media Items (%d)</span>
       <div class="filter-bar">
         <button class="btn-sm btn-green" onclick="withLoading(this,downloadAllPending)">Download All Pending</button>
+        <button class="btn-sm btn-gray" onclick="cleanupFiltered()">Clean up</button>
         <span class="src-meta">Filter:</span>
         <select id="media-filter" onchange="filterMedia(this.value)">
           <option value="">All sources</option>%s
@@ -795,6 +811,18 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="5">5</option>
       </select>
     </div>
+    <div class="form-row">
+      <label>Default retention</label>
+      <select id="cfg-retention">
+        <option value="0">Keep forever</option>
+        <option value="30">30 days</option>
+        <option value="60">60 days</option>
+        <option value="90">90 days</option>
+        <option value="180">180 days</option>
+        <option value="365">1 year</option>
+      </select>
+    </div>
+    <p class="src-meta" style="margin:0 0 10px 0">Retention deletes downloaded media older than N days (by upload date). Pinned items are always preserved. Each source can override this default.</p>
     <div style="margin-top:12px">
       <button class="btn-primary" onclick="withLoading(this,saveConfig)">Save Settings</button>
       <span id="cfg-status" class="src-meta" style="margin-left:8px"></span>
@@ -1027,6 +1055,29 @@ function viewMedia(sourceId){
   const f=document.getElementById('media-filter');
   if(f){f.value=sourceId;filterMedia(sourceId);}
 }
+async function cleanupFiltered(){
+  const filter=sessionStorage.getItem('mediaFilter')||'';
+  if(!filter){toast('Select a source filter first','info');return;}
+  await cleanupSource(filter);
+}
+async function togglePin(mediaId,el){
+  const res=await fetch('/api/v1/media/'+mediaId+'/pin',{method:'POST'});
+  if(res.ok){
+    const data=await res.json();
+    el.textContent=data.pinned?'★':'☆';
+    el.style.color=data.pinned?'#fbbf24':'#4b5563';
+    el.title=data.pinned?'Unpin':'Pin (protect from cleanup)';
+  }
+}
+async function cleanupSource(sourceId){
+  const prev=await fetch('/api/v1/sources/'+sourceId+'/cleanup-preview').then(r=>r.json());
+  if(prev.eligible===0){toast('Nothing to clean up'+(prev.retentionDays===0?' (no retention policy)':''),'info');return;}
+  if(!confirm('Remove '+prev.eligible+' item(s) older than '+prev.retentionDays+' days? ('+prev.pinned+' pinned preserved)'))return;
+  const res=await fetch('/api/v1/sources/'+sourceId+'/cleanup',{method:'POST'});
+  const data=await res.json();
+  toast('Removed '+(data.removed||0)+' item(s)','ok');
+  setTimeout(()=>location.reload(),400);
+}
 async function downloadMedia(mediaId){
   const res=await fetch('/api/v1/media/'+mediaId+'/download',{method:'POST'});
   if(res.ok||res.status===202){toast('Download started','ok');setTimeout(()=>location.reload(),400);}
@@ -1229,6 +1280,7 @@ async function loadConfig(){
     setSelect('cfg-file',c.fileFormat||'date_title');
     setSelect('cfg-format',c.videoFormat||'');
     setSelect('cfg-concurrent',String(c.maxConcurrent||1));
+    setSelect('cfg-retention',String(c.defaultRetentionDays||0));
     document.getElementById('cfg-pl-folder').checked=c.playlistFolderOverride!==false;
     document.getElementById('cfg-pl-file').checked=c.playlistFileOverride!==false;
   }catch(e){}
@@ -1240,7 +1292,8 @@ async function saveConfig(){
     playlistFolderOverride:document.getElementById('cfg-pl-folder').checked,
     playlistFileOverride:document.getElementById('cfg-pl-file').checked,
     videoFormat:document.getElementById('cfg-format').value,
-    maxConcurrent:parseInt(document.getElementById('cfg-concurrent').value)||1
+    maxConcurrent:parseInt(document.getElementById('cfg-concurrent').value)||1,
+    defaultRetentionDays:parseInt(document.getElementById('cfg-retention').value)||0
   };
   const res=await fetch('/api/v1/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(res.ok){toast('Settings saved','ok');}else{toast('Failed to save','err');}

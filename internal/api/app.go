@@ -71,7 +71,11 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/sources/{id}", a.handleDeleteSource)
 	mux.HandleFunc("DELETE /api/v1/media/{id}", a.handleDeleteMedia)
 	mux.HandleFunc("POST /api/v1/media/{id}/download", a.handleDownloadMedia)
+	mux.HandleFunc("POST /api/v1/media/{id}/pin", a.handleTogglePin)
 	mux.HandleFunc("POST /api/v1/media/{id}/retry", a.handleRetryMedia)
+	mux.HandleFunc("GET /api/v1/sources/{id}/cleanup-preview", a.handleCleanupPreview)
+	mux.HandleFunc("POST /api/v1/sources/{id}/cleanup", a.handleCleanup)
+	mux.HandleFunc("PUT /api/v1/sources/{id}/retention", a.handleSetRetention)
 	mux.HandleFunc("POST /api/v1/media/download-all-pending", a.handleDownloadAllPending)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/execute", a.handleExecuteTask)
 	mux.HandleFunc("POST /api/v1/tasks/{id}/cancel", a.handleCancelTask)
@@ -366,6 +370,72 @@ func (a *App) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"config": a.store.GetConfig()})
+}
+
+func (a *App) handleTogglePin(w http.ResponseWriter, r *http.Request) {
+	pinned, err := a.store.TogglePin(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "pin_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"pinned": pinned})
+}
+
+func (a *App) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "source_not_found", "source not found")
+		return
+	}
+	days := src.RetentionDays
+	if days == 0 {
+		days = a.store.GetConfig().DefaultRetentionDays
+	}
+	if days == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"eligible": 0, "pinned": 0, "retentionDays": 0})
+		return
+	}
+	eligible, pinned := a.store.CleanupPreview(id, days)
+	writeJSON(w, http.StatusOK, map[string]any{"eligible": eligible, "pinned": pinned, "retentionDays": days})
+}
+
+func (a *App) handleCleanup(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "source_not_found", "source not found")
+		return
+	}
+	days := src.RetentionDays
+	if days == 0 {
+		days = a.store.GetConfig().DefaultRetentionDays
+	}
+	if days == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"removed": 0, "message": "no retention policy set"})
+		return
+	}
+	filePaths, removed := a.store.CleanupSource(id, days)
+	for _, fp := range filePaths {
+		os.Remove(fp)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"removed": removed})
+}
+
+func (a *App) handleSetRetention(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		RetentionDays int `json:"retentionDays"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
+		return
+	}
+	if err := a.store.UpdateSourceRetention(id, req.RetentionDays); err != nil {
+		writeError(w, http.StatusNotFound, "update_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"retentionDays": req.RetentionDays})
 }
 
 func (a *App) handleDownloadMedia(w http.ResponseWriter, r *http.Request) {

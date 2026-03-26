@@ -533,6 +533,122 @@ func (s *Store) VerifyMediaFiles() int {
 	return count
 }
 
+// CleanupPreview returns the number of items eligible for cleanup and the number of pinned items preserved.
+func (s *Store) CleanupPreview(sourceID string, retentionDays int) (eligible int, pinned int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if retentionDays <= 0 {
+		return 0, 0
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
+	for _, m := range s.state.MediaItems {
+		if m.SourceID != sourceID || m.Status != models.MediaItemStatusDone {
+			continue
+		}
+		age := m.CreatedAt
+		if m.UploadDate != nil {
+			age = *m.UploadDate
+		}
+		if age.Before(cutoff) {
+			if m.Pinned {
+				pinned++
+			} else {
+				eligible++
+			}
+		}
+	}
+	return
+}
+
+// CleanupSource removes downloaded media older than retentionDays for a source.
+// Skips pinned items. Returns removed file paths and count.
+func (s *Store) CleanupSource(sourceID string, retentionDays int) ([]string, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if retentionDays <= 0 {
+		return nil, 0
+	}
+	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays)
+	var filePaths []string
+	toRemove := map[string]bool{}
+
+	for _, m := range s.state.MediaItems {
+		if m.SourceID != sourceID || m.Status != models.MediaItemStatusDone {
+			continue
+		}
+		if m.Pinned {
+			continue
+		}
+		age := m.CreatedAt
+		if m.UploadDate != nil {
+			age = *m.UploadDate
+		}
+		if age.Before(cutoff) {
+			toRemove[m.ID] = true
+			if m.FilePath != "" {
+				filePaths = append(filePaths, m.FilePath)
+			}
+		}
+	}
+
+	if len(toRemove) == 0 {
+		return nil, 0
+	}
+
+	// Remove media items
+	var kept []models.MediaItem
+	for _, m := range s.state.MediaItems {
+		if !toRemove[m.ID] {
+			kept = append(kept, m)
+		}
+	}
+	s.state.MediaItems = kept
+
+	// Remove related completed tasks
+	var keptTasks []models.Task
+	for _, t := range s.state.Tasks {
+		if toRemove[t.EntityID] && (t.Status == models.TaskStatusSucceeded || t.Status == models.TaskStatusFailed) {
+			continue
+		}
+		keptTasks = append(keptTasks, t)
+	}
+	s.state.Tasks = keptTasks
+
+	_ = s.saveLocked()
+	return filePaths, len(toRemove)
+}
+
+// UpdateSourceRetention sets the retention policy for a source.
+func (s *Store) UpdateSourceRetention(id string, days int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Sources {
+		if s.state.Sources[i].ID == id {
+			s.state.Sources[i].RetentionDays = days
+			s.state.Sources[i].UpdatedAt = time.Now().UTC()
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("source %s not found", id)
+}
+
+// TogglePin toggles the Pinned flag on a media item.
+func (s *Store) TogglePin(id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.MediaItems {
+		if s.state.MediaItems[i].ID == id {
+			s.state.MediaItems[i].Pinned = !s.state.MediaItems[i].Pinned
+			s.state.MediaItems[i].UpdatedAt = time.Now().UTC()
+			if err := s.saveLocked(); err != nil {
+				return false, err
+			}
+			return s.state.MediaItems[i].Pinned, nil
+		}
+	}
+	return false, fmt.Errorf("media item %s not found", id)
+}
+
 // RetryMediaItem resets a failed or missing media item to pending status.
 func (s *Store) RetryMediaItem(id string) error {
 	s.mu.Lock()

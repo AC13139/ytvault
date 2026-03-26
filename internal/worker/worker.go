@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"sync"
+	"time"
 
 	"ytvault/internal/models"
 	"ytvault/internal/store"
@@ -156,6 +158,11 @@ func (w *Worker) runIndex(task models.Task) error {
 			Duration: v.Duration,
 			Status:   models.MediaItemStatusPending,
 		}
+		if v.UploadDate != "" {
+			if t, err := time.Parse("20060102", v.UploadDate); err == nil {
+				items[i].UploadDate = &t
+			}
+		}
 	}
 
 	created, err := w.store.CreateMediaItems(items)
@@ -179,6 +186,22 @@ func (w *Worker) runIndex(task models.Task) error {
 		}
 		log.Printf("worker: auto-started %d download task(s) for source %s", len(dlTasks), src.ID)
 	}
+
+	// Auto-cleanup: remove old media based on retention policy
+	retDays := src.RetentionDays
+	if retDays == 0 {
+		retDays = w.store.GetConfig().DefaultRetentionDays
+	}
+	if retDays > 0 {
+		filePaths, removed := w.store.CleanupSource(src.ID, retDays)
+		if removed > 0 {
+			for _, fp := range filePaths {
+				os.Remove(fp)
+			}
+			log.Printf("worker: auto-cleanup removed %d old item(s) for source %s", removed, src.ID)
+		}
+	}
+
 	return nil
 }
 

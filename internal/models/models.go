@@ -31,6 +31,7 @@ type Source struct {
 	NextAction         string       `json:"nextAction,omitempty"`
 	ValidationSummary  string       `json:"validationSummary,omitempty"`
 	PrototypeReadiness string       `json:"prototypeReadiness,omitempty"`
+	RetentionDays      int          `json:"retentionDays,omitempty"` // 0 = keep forever
 	Status             SourceStatus `json:"status"`
 	CreatedAt          time.Time    `json:"createdAt"`
 	UpdatedAt          time.Time    `json:"updatedAt"`
@@ -70,17 +71,19 @@ const (
 )
 
 type MediaItem struct {
-	ID        string          `json:"id"`
-	SourceID  string          `json:"sourceId"`
-	VideoID   string          `json:"videoId"`
-	Title     string          `json:"title"`
-	URL       string          `json:"url"`
-	Duration  int             `json:"duration,omitempty"`
-	Status    MediaItemStatus `json:"status"`
-	FilePath  string          `json:"filePath,omitempty"`
-	ErrorMsg  string          `json:"errorMessage,omitempty"`
-	CreatedAt time.Time       `json:"createdAt"`
-	UpdatedAt time.Time       `json:"updatedAt"`
+	ID         string          `json:"id"`
+	SourceID   string          `json:"sourceId"`
+	VideoID    string          `json:"videoId"`
+	Title      string          `json:"title"`
+	URL        string          `json:"url"`
+	Duration   int             `json:"duration,omitempty"`
+	UploadDate *time.Time      `json:"uploadDate,omitempty"` // YouTube upload date (nil = unknown)
+	Pinned     bool            `json:"pinned,omitempty"`     // pinned items are never auto-cleaned
+	Status     MediaItemStatus `json:"status"`
+	FilePath   string          `json:"filePath,omitempty"`
+	ErrorMsg   string          `json:"errorMessage,omitempty"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
 }
 
 // Schedule defines a recurring re-index (and optional auto-download) for a source.
@@ -106,6 +109,7 @@ type Config struct {
 	PlaylistTemplate      string `json:"playlistTemplate,omitempty"`      // resolved template for playlist sources
 	VideoFormat           string `json:"videoFormat,omitempty"`           // yt-dlp -f value
 	MaxConcurrent         int    `json:"maxConcurrent,omitempty"`         // max parallel downloads
+	DefaultRetentionDays  int    `json:"defaultRetentionDays,omitempty"`  // global default, 0 = keep forever
 }
 
 type State struct {

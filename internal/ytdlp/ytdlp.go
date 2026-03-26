@@ -37,22 +37,24 @@ func baseArgs() []string {
 
 // VideoInfo represents a single video returned by yt-dlp.
 type VideoInfo struct {
-	ID       string
-	Title    string
-	URL      string
-	Duration int // seconds
+	ID         string
+	Title      string
+	URL        string
+	Duration   int    // seconds
+	UploadDate string // YYYYMMDD or empty
 }
 
 // probeResult matches the JSON output of `yt-dlp --flat-playlist -J`.
 type probeResult struct {
-	ID         string        `json:"id"`
-	Title      string        `json:"title"`
-	Channel    string        `json:"channel"`
-	Uploader   string        `json:"uploader"`
-	WebpageURL string        `json:"webpage_url"`
-	URL        string        `json:"url"`
-	Duration   *float64      `json:"duration"` // null or number
-	Entries    []probeResult `json:"entries"`
+	ID           string        `json:"id"`
+	Title        string        `json:"title"`
+	Channel      string        `json:"channel"`
+	Uploader     string        `json:"uploader"`
+	WebpageURL   string        `json:"webpage_url"`
+	URL          string        `json:"url"`
+	Duration     *float64      `json:"duration"`    // null or number
+	RawUploadDate string       `json:"upload_date"` // YYYYMMDD or empty
+	Entries      []probeResult `json:"entries"`
 }
 
 func (p probeResult) channelName() string {
@@ -118,7 +120,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 
 	if len(root.Entries) == 0 {
 		return root.Title, []VideoInfo{{
-			ID: root.ID, Title: root.Title, URL: root.videoURL(), Duration: root.duration(),
+			ID: root.ID, Title: root.Title, URL: root.videoURL(), Duration: root.duration(), UploadDate: root.RawUploadDate,
 		}}, nil
 	}
 
@@ -134,7 +136,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 				continue
 			}
 			videos = append(videos, VideoInfo{
-				ID: e.ID, Title: e.Title, URL: e.videoURL(), Duration: e.duration(),
+				ID: e.ID, Title: e.Title, URL: e.videoURL(), Duration: e.duration(), UploadDate: e.RawUploadDate,
 			})
 		}
 	}
@@ -239,7 +241,7 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 			channelTitle = entry.Title // will be overwritten by channel-level data if present
 		}
 		videos = append(videos, VideoInfo{
-			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Duration: entry.duration(),
+			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Duration: entry.duration(), UploadDate: entry.RawUploadDate,
 		})
 	}
 	return channelTitle, videos, nil
