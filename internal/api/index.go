@@ -114,7 +114,7 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">`+
 			`<select id="sched-interval-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
 			`<select id="sched-dateafter-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">`+
+			`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">`+
 			`<input type="checkbox" id="sched-autodl-%s"%s style="width:auto;margin:0"> Auto-dl</label>`+
 			`<button class="btn-sm btn-blue" onclick="setSchedule('%s')">Set</button>%s`+
 			`</div>`,
@@ -246,37 +246,43 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 
-		// Detail cell — show only title, kind badge, and URL as clickable link
-		detail := fmt.Sprintf(
-			`<div class="src-title" title="%s">%s</div>`+
-				`<div class="tags">%s</div>`+
-				`<div class="src-meta" title="%s"><a href="%s" target="_blank" style="color:#60a5fa">%s</a></div>`,
-			html.EscapeString(s.Title), html.EscapeString(s.Title),
-			tag(string(s.Kind)),
-			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
-		)
-
-		// Media cell
-		mediaInfo := fmt.Sprintf(`<span class="src-meta">%d indexed`, mediaCount)
-		if doneCount > 0 {
-			mediaInfo += fmt.Sprintf(`, %d downloaded`, doneCount)
+		// Progress percentage
+		pct := 0
+		if mediaCount > 0 {
+			pct = doneCount * 100 / mediaCount
 		}
-		mediaInfo += `</span>`
-		viewBtn := fmt.Sprintf(
-			`<br><button class="btn-sm btn-blue" style="margin-top:4px" onclick="viewMedia('%s')">View media</button>`,
-			html.EscapeString(s.ID),
-		)
-		mediaCell := mediaInfo + viewBtn
+
+		kindClass := "tag-video"
+		if s.Kind == models.SourceKindChannel {
+			kindClass = "tag-channel"
+		} else if s.Kind == models.SourceKindPlaylist {
+			kindClass = "tag-playlist"
+		}
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
-			detail,
-			mediaCell,
+			`<div class="source-card">`+
+				`<div class="source-header">`+
+				`<div class="src-title" title="%s">%s</div>`+
+				`<span class="tag %s">%s</span>`+
+				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')" style="flex-shrink:0">View</button>`+
+				`</div>`+
+				`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`+
+				`<div style="display:flex;align-items:center;gap:10px;margin-top:4px">`+
+				`<div class="progress-bar" style="flex:1"><div class="fill" style="width:%d%%"></div></div>`+
+				`<span class="stat-num">%d / %d</span>`+
+				`</div>`+
+				`<div class="card-actions">%s</div>`+
+				`</div>`,
+			html.EscapeString(s.Title), html.EscapeString(s.Title),
+			kindClass, html.EscapeString(string(s.Kind)),
+			html.EscapeString(s.ID),
+			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
+			pct, doneCount, mediaCount,
 			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }(), s.RetentionDays),
 		))
 	}
 	if len(sourceRows) == 0 {
-		sourceRows = []string{`<tr><td colspan="3" class="empty">No sources yet.<br><span class="src-meta">Use the + New tab to add a YouTube source.</span></td></tr>`}
+		sourceRows = []string{`<div class="empty-state"><div class="empty-icon">&#128250;</div><div class="empty-text">No sources yet</div><div class="empty-sub">Click + New Source in the sidebar to get started</div></div>`}
 	}
 
 	// ── Media filter options ──────────────────────────────────────────────────
@@ -339,9 +345,28 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		}
 
+		// Status icon for thumbnail overlay
+		stClass := "st-pending"
+		stIcon := "&#9679;"
+		switch m.Status {
+		case models.MediaItemStatusDone:
+			stClass = "st-done"; stIcon = "&#10003;"
+		case models.MediaItemStatusFailed:
+			stClass = "st-failed"; stIcon = "&#10007;"
+		case models.MediaItemStatusDownloading:
+			stClass = "st-downloading"; stIcon = "&#8595;"
+		case models.MediaItemStatusMissing:
+			stClass = "st-missing"; stIcon = "?"
+		}
+
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s"><td title="%s">%s</td><td class="src-meta">%s</td><td>%s</td><td>%s</td></tr>`,
+			`<tr data-source="%s">`+
+				`<td style="width:130px;padding:8px"><div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div></td>`+
+				`<td style="white-space:normal;max-width:400px"><div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span></div></td>`+
+				`<td>%s</td>`+
+				`<td class="row-actions">%s</td></tr>`,
 			html.EscapeString(m.SourceID),
+			html.EscapeString(m.VideoID), stClass, stIcon,
 			html.EscapeString(m.Title), html.EscapeString(m.Title),
 			html.EscapeString(dur),
 			statusBadge(string(m.Status)),
@@ -349,7 +374,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(mediaRows) == 0 {
-		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet.<br><span class="src-meta">Add a source from the Sources tab — videos will appear here after scanning.</span></td></tr>`}
+		mediaRows = []string{`<tr><td colspan="5" class="empty">No media yet.<br><span class="src-meta">Add a source from the + New tab — videos will appear here after scanning.</span></td></tr>`}
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
@@ -416,7 +441,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
-			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td class="row-actions">%s</td></tr>`,
 			html.EscapeString(typeLabel),
 			html.EscapeString(entityName), html.EscapeString(entityName),
 			statusCell,
@@ -425,7 +450,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(taskRows) == 0 {
-		taskRows = []string{`<tr><td colspan="5" class="empty">No tasks yet</td></tr>`}
+		taskRows = []string{`<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">&#9889;</div><div class="empty-text">All systems go</div><div class="empty-sub">No active tasks</div></div></td></tr>`}
 	}
 
 	// ── Schedule rows ─────────────────────────────────────────────────────────
@@ -514,109 +539,232 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	// ── Page template ─────────────────────────────────────────────────────────
-	page := `<!doctype html><html lang="en">
+	page := `<!doctype html><html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YtVault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Inter,system-ui,sans-serif;background:#0b1220;color:#e5e7eb;min-height:100vh}
-nav{display:flex;align-items:center;gap:12px;padding:0 20px;height:52px;background:#0f172a;border-bottom:1px solid #1e293b;position:sticky;top:0;z-index:100}
-.logo{font-size:17px;font-weight:700;color:#f1f5f9;margin-right:4px}
-.nav-tabs{display:flex;gap:2px}
-.nav-tab{background:none;border:none;color:#94a3b8;font-size:14px;font-weight:500;padding:5px 12px;border-radius:8px;cursor:pointer}
-.nav-tab:hover{color:#e5e7eb;background:#1e293b}
-.nav-tab.active{color:#60a5fa;background:#172033}
-.nav-stats{margin-left:auto;display:flex;gap:6px}
-.stat-pill{background:#172033;border:1px solid #1e3a5f;color:#93c5fd;font-size:11px;padding:2px 9px;border-radius:999px;cursor:pointer}.stat-pill:hover{background:#1e3a5f}
-.main{padding:20px;max-width:1300px;margin:0 auto}
+/* ── Theme variables ── */
+:root,[data-theme="dark"]{
+  --bg:#020617;--bg-mesh1:rgba(59,130,246,0.06);--bg-mesh2:rgba(124,58,237,0.04);
+  --surface:#0f172a;--surface-hover:#1e293b;--surface-glass:rgba(15,23,42,0.7);
+  --border:#1e293b;--border-subtle:rgba(255,255,255,0.04);--border-hover:rgba(59,130,246,0.25);
+  --text:#f8fafc;--text-secondary:#94a3b8;--text-muted:#475569;--text-faint:rgba(71,85,105,0.4);
+  --primary:#3b82f6;--primary-glow:0 0 8px rgba(59,130,246,0.4),0 0 24px rgba(59,130,246,0.15);--primary-bg:rgba(59,130,246,0.08);
+  --success:#10b981;--success-bg:rgba(16,185,129,0.12);--success-text:#6ee7b7;
+  --danger:#ef4444;--danger-bg:rgba(239,68,68,0.12);--danger-text:#fca5a5;
+  --warning:#f59e0b;--warning-bg:rgba(245,158,11,0.12);--warning-text:#fcd34d;
+  --orange:#fb923c;--orange-bg:rgba(249,115,22,0.12);
+  --sidebar-bg:rgba(2,6,23,0.95);--sidebar-active:rgba(59,130,246,0.08);
+  --card-shadow:0 8px 32px rgba(0,0,0,0.4);--input-bg:rgba(15,23,42,0.8);
+  --badge-muted-bg:rgba(30,41,59,0.6);
+  --tag-ch-bg:rgba(167,139,250,0.1);--tag-ch-border:rgba(167,139,250,0.15);--tag-ch-text:#a78bfa;
+}
+[data-theme="light"]{
+  --bg:#f8fafc;--bg-mesh1:rgba(59,130,246,0.03);--bg-mesh2:rgba(124,58,237,0.02);
+  --surface:#ffffff;--surface-hover:#f1f5f9;--surface-glass:rgba(255,255,255,0.85);
+  --border:#e2e8f0;--border-subtle:rgba(0,0,0,0.04);--border-hover:rgba(59,130,246,0.3);
+  --text:#0f172a;--text-secondary:#64748b;--text-muted:#94a3b8;--text-faint:rgba(100,116,139,0.4);
+  --primary:#2563eb;--primary-glow:0 0 6px rgba(37,99,235,0.2),0 0 16px rgba(37,99,235,0.08);--primary-bg:rgba(37,99,235,0.06);
+  --success:#059669;--success-bg:rgba(5,150,105,0.08);--success-text:#059669;
+  --danger:#dc2626;--danger-bg:rgba(220,38,38,0.06);--danger-text:#dc2626;
+  --warning:#d97706;--warning-bg:rgba(217,119,6,0.06);--warning-text:#d97706;
+  --orange:#ea580c;--orange-bg:rgba(234,88,12,0.06);
+  --sidebar-bg:rgba(255,255,255,0.95);--sidebar-active:rgba(37,99,235,0.05);
+  --card-shadow:0 4px 6px -1px rgba(0,0,0,0.05);--input-bg:#f8fafc;
+  --badge-muted-bg:rgba(241,245,249,0.8);
+  --tag-ch-bg:rgba(139,92,246,0.06);--tag-ch-border:rgba(139,92,246,0.1);--tag-ch-text:#6d28d9;
+}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background 0.3s,color 0.3s}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20%% 0%%,var(--bg-mesh1) 0%%,transparent 50%%),radial-gradient(ellipse at 80%% 100%%,var(--bg-mesh2) 0%%,transparent 50%%);pointer-events:none;z-index:0}
+/* ── Sidebar ── */
+.sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:var(--sidebar-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;z-index:200;padding:0;transition:width 0.2s,background 0.3s}
+.sidebar.collapsed{width:56px}
+.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .count,.sidebar.collapsed .logo-text,.sidebar.collapsed .theme-toggle,.sidebar.collapsed .status-dot{display:none}
+.sidebar.collapsed .sidebar-logo{padding:16px 12px;text-align:center}
+.sidebar-logo{padding:20px 16px 16px;font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-subtle);margin-bottom:4px}
+.logo-text{white-space:nowrap}
+.logo-text b{color:var(--primary);font-weight:700}
+.sidebar-toggle{background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:6px;border-radius:8px;transition:all 0.15s}
+.sidebar-toggle:hover{color:var(--text-secondary);background:var(--surface-hover)}
+.sidebar-section{padding:0 10px;margin-bottom:4px}
+.sidebar-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-faint);padding:14px 8px 6px}
+.nav-tab{position:relative;display:flex;align-items:center;gap:10px;width:100%%;background:none;border:none;color:var(--text-secondary);font-size:13px;font-weight:500;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left;border-left:3px solid transparent}
+.nav-tab:hover{color:var(--text);background:var(--surface-hover)}
+.nav-tab.active{color:var(--primary);background:var(--sidebar-active);border-left-color:var(--primary);box-shadow:var(--primary-glow)}
+.nav-tab .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-tab .count{margin-left:auto;font-size:10px;color:var(--text-muted);font-weight:500;background:var(--surface-hover);padding:1px 7px;border-radius:99px}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%%;margin-left:auto;flex-shrink:0}
+.status-dot.ok{background:var(--success);box-shadow:0 0 8px rgba(16,185,129,0.5)}
+.status-dot.warn{background:var(--warning);box-shadow:0 0 8px rgba(245,158,11,0.5);animation:pulse 1.5s infinite}
+.status-dot.err{background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,0.5)}
+.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-subtle)}
+/* ── Theme toggle ── */
+.theme-toggle{background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;transition:all 0.15s;width:100%%}
+.theme-toggle:hover{background:var(--surface-hover);color:var(--text)}
+/* ── Main area ── */
+.main{margin-left:220px;padding:28px 32px;min-height:100vh;position:relative;z-index:1;transition:margin-left 0.2s}
+.sidebar.collapsed ~ .main{margin-left:56px}
+.page-title{font-size:22px;font-weight:700;color:var(--text);margin-bottom:20px;letter-spacing:-0.3px}
 .tab-content{display:none}.tab-content.active{display:block}
-.card{background:#121a2b;border:1px solid #1e293b;border-radius:12px;padding:18px;margin-bottom:18px}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
-.card-title{font-size:15px;font-weight:600;color:#f1f5f9}
-.form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px;align-items:end}
-.form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:10px;align-items:end}
-label{font-size:13px;color:#94a3b8;margin-bottom:3px;display:block}
-select,input[type=text]{width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:7px 10px;color:#e5e7eb;font-size:13px}
-select:focus,input:focus{outline:none;border-color:#3b82f6}
-button{border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer}
-.btn-primary{background:#2563eb;color:#fff;padding:8px 18px}
-.btn-primary:hover{background:#1d4ed8}
-.btn-sm{padding:3px 9px;font-size:12px}
-.btn-blue{background:#1e3a5f;color:#93c5fd;border:1px solid #2d5a8e}
-.btn-blue:hover{background:#1a3356}
-.btn-green{background:#14532d;color:#86efac;border:1px solid #166534}
-.btn-green:hover{background:#115225}
-.btn-orange{background:#431407;color:#fb923c;border:1px solid #7c2d12}
-.btn-orange:hover{background:#3a1006}
-.btn-red{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d}
-.btn-gray{background:#1e293b;color:#94a3b8;border:1px solid #334155}
-.btn-gray:hover{background:#243044}
+/* ── Glass cards ── */
+.card{background:var(--surface-glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:var(--card-shadow);transition:background 0.3s,border-color 0.3s}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.card-title{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-0.2px}
+/* ── Forms ── */
+.form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:12px;align-items:end}
+.form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:12px;align-items:end}
+label{font-size:13px;color:var(--text-secondary);margin-bottom:3px;display:block;font-weight:500}
+select,input[type=text],textarea{width:100%%;background:var(--input-bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;transition:border-color 0.2s,background 0.3s}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-glow)}
+/* ── Buttons ── */
+button{border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
+.btn-primary{background:linear-gradient(135deg,var(--primary),#60a5fa);color:#fff;padding:9px 20px;box-shadow:0 2px 12px var(--primary-glow)}
+.btn-primary:hover{box-shadow:0 4px 16px var(--primary-glow);transform:translateY(-1px);filter:brightness(1.1)}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:8px;transition:all 0.15s}
+.btn-sm:hover{transform:translateY(-1px)}
+.btn-blue{background:var(--primary-bg);color:var(--primary);border:1px solid rgba(59,130,246,0.2)}
+.btn-blue:hover{box-shadow:0 0 12px var(--primary-glow)}
+.btn-green{background:var(--success-bg);color:var(--success-text);border:1px solid rgba(16,185,129,0.2)}
+.btn-green:hover{box-shadow:0 0 12px rgba(16,185,129,0.15)}
+.btn-orange{background:var(--orange-bg);color:var(--orange);border:1px solid rgba(249,115,22,0.2)}
+.btn-orange:hover{box-shadow:0 0 12px rgba(249,115,22,0.15)}
+.btn-red{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(239,68,68,0.2)}
+.btn-gray{background:var(--badge-muted-bg);color:var(--text-secondary);border:1px solid var(--border-subtle)}
+.btn-gray:hover{background:var(--surface-hover)}
+/* ── Tables ── */
 .table-wrap{overflow-x:auto}
 table{width:100%%;border-collapse:collapse;font-size:13px}
-th{color:#94a3b8;font-weight:500;padding:9px 8px;border-bottom:1px solid #1e293b;text-align:left;white-space:nowrap}
-td{padding:9px 8px;border-bottom:1px solid #111827;vertical-align:top;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th{color:var(--text-muted);font-weight:500;padding:10px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+td{padding:10px 10px;border-bottom:1px solid var(--border-subtle);vertical-align:top;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:background 0.15s}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.02)}
-.badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap}
-.badge-queued{background:#1e3a5f;color:#93c5fd}
-.badge-running{background:#3b1d00;color:#fb923c}
-.badge-succeeded{background:#14532d;color:#86efac}
-.badge-failed{background:#3b0f0f;color:#fca5a5}
-.badge-pending{background:#1e293b;color:#94a3b8}
-.badge-downloading{background:#3b1d00;color:#fb923c}
-.badge-done{background:#14532d;color:#86efac}
-.badge-missing{background:#431407;color:#fb923c}
-.badge-enabled{background:#14532d;color:#86efac}
-.badge-disabled{background:#1e293b;color:#94a3b8}
-.tag{display:inline-flex;align-items:center;background:#172033;border:1px solid #31415f;border-radius:999px;padding:2px 7px;font-size:11px;color:#bfdbfe}
-.src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src-meta{color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr:hover td{background:var(--surface-hover)}
+tr:hover .row-actions{opacity:1}
+.row-actions{opacity:0.4;transition:opacity 0.2s}
+/* ── Badges & tags ── */
+.badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;white-space:nowrap}
+.badge-queued{background:var(--primary-bg);color:var(--primary)}
+.badge-running{background:var(--warning-bg);color:var(--warning)}
+.badge-running::before{content:'';width:6px;height:6px;border-radius:50%%;background:var(--warning);animation:pulse 1.5s infinite}
+.badge-succeeded{background:var(--success-bg);color:var(--success)}
+.badge-failed{background:var(--danger-bg);color:var(--danger-text)}
+.badge-pending{background:var(--badge-muted-bg);color:var(--text-secondary)}
+.badge-downloading{background:var(--warning-bg);color:var(--warning)}
+.badge-downloading::before{content:'';width:6px;height:6px;border-radius:50%%;background:var(--warning);animation:pulse 1.5s infinite}
+.badge-done{background:var(--success-bg);color:var(--success)}
+.badge-done::before{content:'';width:6px;height:6px;border-radius:50%%;background:var(--success)}
+.badge-missing{background:var(--orange-bg);color:var(--orange)}
+.badge-enabled{background:var(--success-bg);color:var(--success)}
+.badge-enabled::before{content:'';width:6px;height:6px;border-radius:50%%;background:var(--success)}
+.badge-disabled{background:var(--badge-muted-bg);color:var(--text-secondary)}
+@keyframes pulse{0%%,100%%{opacity:1}50%%{opacity:0.3}}
+@keyframes shimmer{0%%{background-position:-200%% 0}100%%{background-position:200%% 0}}
+.badge-running,.badge-downloading{position:relative;overflow:hidden}
+.badge-running::after,.badge-downloading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent);background-size:200%% 100%%;animation:shimmer 2s infinite}
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:48px 24px}
+.empty-state .empty-icon{font-size:40px;margin-bottom:12px;opacity:0.3}
+.empty-state .empty-text{color:var(--text-secondary);font-size:14px}
+.empty-state .empty-sub{color:var(--text-muted);font-size:12px;margin-top:4px}
+.tag{display:inline-flex;align-items:center;background:var(--badge-muted-bg);border:1px solid var(--border-subtle);border-radius:999px;padding:2px 8px;font-size:11px;color:var(--primary);transition:background 0.3s}
+.src-title{font-weight:600;color:var(--text);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.src-meta{color:var(--text-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.input-container{max-width:800px}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
+/* ── Source cards ── */
+.source-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:12px;transition:transform 0.2s ease,border-color 0.2s ease,box-shadow 0.2s ease;cursor:default}
+.source-card:hover{border-color:var(--border-hover);box-shadow:0 6px 24px rgba(0,0,0,0.25);transform:translateY(-2px)}
+.source-card:hover .card-actions{opacity:1;transform:translateY(0)}
+.source-card .card-actions{opacity:0;transform:translateY(6px);transition:all 0.25s ease;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.source-card .source-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.source-card .source-header .src-title{font-size:15px;flex:1}
+.source-url{color:var(--text-muted);font-size:12px;text-decoration:none;transition:color 0.15s}
+.source-url:hover{color:var(--primary)}
+[data-theme="dark"] .source-url{color:#64748b}
+.progress-bar{height:6px;border-radius:3px;background:var(--border-subtle);overflow:hidden;margin:8px 0}
+.progress-bar .fill{height:100%%;border-radius:3px;background:linear-gradient(90deg,var(--primary),var(--success));transition:width 0.4s ease}
+.source-card:hover .progress-bar .fill{filter:brightness(1.05)}
+.stat-num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--text-secondary);letter-spacing:-0.3px}
+/* Kind badges with tinted backgrounds */
+.tag-video{background:var(--badge-muted-bg);border-color:var(--border-subtle);color:var(--text-secondary)}
+.tag-channel{background:var(--tag-ch-bg);border-color:var(--tag-ch-border);color:var(--tag-ch-text)}
+.tag-playlist{background:var(--primary-bg);border-color:rgba(59,130,246,0.12);color:var(--primary)}
+[data-theme="light"] .source-card{border:none;box-shadow:var(--card-shadow)}
+[data-theme="light"] .source-card:hover{box-shadow:0 8px 24px rgba(0,0,0,0.08)}
+[data-theme="light"] .card{border:none;box-shadow:var(--card-shadow)}
+[data-theme="light"] .thumb-wrap{background:#f1f5f9}
+[data-theme="light"] body::before{display:none}
+/* More actions menu */
+.more-btn{background:none;border:1px solid rgba(255,255,255,0.06);color:#475569;padding:4px 8px;font-size:14px;border-radius:8px;cursor:pointer;transition:all 0.15s;line-height:1}
+.more-btn:hover{color:#94a3b8;background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1)}
+.actions-popover{display:none;position:absolute;right:0;top:100%%;background:rgba(15,23,42,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:8px;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,0.5);z-index:50}
+.actions-popover.open{display:block}
+.actions-popover button{width:100%%;text-align:left;padding:7px 10px;border-radius:8px;background:none;color:#94a3b8;font-size:12px;font-weight:500;border:none}
+.actions-popover button:hover{background:rgba(255,255,255,0.05);color:#e2e8f0}
+/* ── Media thumbnails ── */
+.thumb-wrap{position:relative;width:120px;min-width:120px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(15,23,42,0.8)}
+.thumb-wrap img{width:100%%;height:100%%;object-fit:cover;display:block}
+.thumb-status{position:absolute;bottom:4px;right:4px;width:18px;height:18px;border-radius:50%%;display:flex;align-items:center;justify-content:center;font-size:10px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.1)}
+.thumb-status.st-done{background:rgba(20,83,45,0.8);color:#86efac}
+.thumb-status.st-pending{background:rgba(30,41,59,0.8);color:#94a3b8}
+.thumb-status.st-failed{background:rgba(69,10,10,0.8);color:#fca5a5}
+.thumb-status.st-downloading{background:rgba(59,29,0,0.8);color:#fb923c}
+.thumb-status.st-missing{background:rgba(67,20,7,0.8);color:#fb923c}
+.media-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.media-info .m-title{font-weight:600;color:var(--text);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-info .m-sub{font-size:12px;color:#475569}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
-#toast{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
-.toast-msg{background:#1e293b;border-radius:10px;padding:10px 14px;font-size:13px;max-width:340px;border-left:3px solid #3b82f6;pointer-events:auto;animation:tslide .2s ease}
-.toast-ok{border-color:#22c55e;color:#86efac}
-.toast-err{border-color:#ef4444;color:#fca5a5}
-.toast-info{border-color:#3b82f6;color:#93c5fd}
-@keyframes tslide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.empty{color:#4b5563;text-align:center;padding:28px;font-size:13px}
-.pager{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;color:#94a3b8}
-.pager select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 4px;color:#e5e7eb;font-size:11px;width:auto;min-width:0}
-.pager button{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 10px;color:#94a3b8;font-size:12px;cursor:pointer}
-.pager button:hover:not(:disabled){background:#243044;color:#e5e7eb}
-.pager button:disabled{opacity:0.4;cursor:default}
-@media(max-width:768px){.form-row,.form-row-3{grid-template-columns:1fr}.nav-stats{display:none}}
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast-msg{background:var(--surface-glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:13px;max-width:360px;border-left:3px solid var(--primary);pointer-events:auto;animation:tslide .25s ease;box-shadow:var(--card-shadow);color:var(--text)}
+.toast-ok{border-color:var(--success);color:var(--success-text)}
+.toast-err{border-color:var(--danger);color:var(--danger-text)}
+.toast-info{border-color:var(--primary);color:var(--primary)}
+@keyframes tslide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.empty{color:var(--text-secondary);text-align:center;padding:32px;font-size:13px}
+/* ── Pager ── */
+.pager{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:12px;color:var(--text-muted)}
+.pager select{background:var(--input-bg);border:1px solid var(--border);border-radius:8px;padding:4px 6px;color:var(--text);font-size:11px;width:auto;min-width:0}
+.pager button{background:var(--badge-muted-bg);border:1px solid var(--border);border-radius:8px;padding:4px 12px;color:var(--text-secondary);font-size:12px;cursor:pointer}
+.pager button:hover:not(:disabled){color:var(--text)}
+.pager button:disabled{opacity:0.3;cursor:default}
+/* ── Responsive ── */
+@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-label,.sidebar-label,.logo-text,.nav-tab .count,.sidebar-toggle,.status-dot,.theme-toggle{display:none}.sidebar-logo{padding:16px 12px;text-align:center}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}.thumb-wrap{width:80px;min-width:80px}}
 </style>
 </head>
 <body>
-<nav>
-  <span class="logo">YtVault</span>
-  <div class="nav-tabs">
-    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')">+ New</button>
-    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')">Sources</button>
-    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')">Media</button>
-    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')">Tasks</button>
-    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')">Schedules</button>
-    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')">Cookies %s</button>
-    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')">Settings</button>
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo"><span class="logo-text">Yt<b>Vault</b></span><button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button></div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Main</div>
+    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span class="nav-label">New Source</span></button>
+    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span class="nav-label">Sources</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span class="nav-label">Media</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span class="nav-label">Tasks</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')"><span class="icon">&#128337;</span> <span class="nav-label">Schedules</span> <span class="count">%d</span></button>
   </div>
-  <div class="nav-stats">
-    <span class="stat-pill" onclick="showTab('sources')">%d sources</span>
-    <span class="stat-pill" onclick="showTab('media')">%d media</span>
-    <span class="stat-pill" onclick="showTab('tasks')">%d tasks</span>
-    <span class="stat-pill" onclick="showTab('schedules')">%d schedules</span>
+  <div class="sidebar-section">
+    <div class="sidebar-label">System</div>
+    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')"><span class="icon">&#128274;</span> <span class="nav-label">Cookies</span> %s</button>
+    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span class="nav-label">Settings</span></button>
   </div>
-</nav>
+  <div class="sidebar-footer">
+    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">&#9790; Dark</button>
+  </div>
+</aside>
 <div id="toast"></div>
 <div class="main">
 
 <div id="tab-new" class="tab-content">
+  <h1 class="page-title">Add New Source</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Search YouTube</span></div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <input type="text" id="search-q" placeholder="Search by keywords…" style="flex:1" onkeydown="if(event.key==='Enter')searchYT()">
+    <div class="input-container" style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="search-q" placeholder="Search YouTube by keywords…" style="flex:1;backdrop-filter:blur(10px)" onkeydown="if(event.key==='Enter')searchYT()">
       <button class="btn-primary" onclick="withLoading(this,searchYT)">Search</button>
     </div>
     <div id="search-results" style="display:none">
@@ -629,7 +777,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="card">
     <div class="card-header"><span class="card-title">Add Source</span></div>
     <input type="hidden" id="kind" value="video">
-    <div class="form-row">
+    <div class="form-row input-container">
       <label>YouTube URL</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="url" placeholder="https://www.youtube.com/..." style="flex:1" onkeydown="if(event.key==='Enter')submitForm()" oninput="autoDetectKind()">
@@ -641,14 +789,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <select id="add-dateafter">%s</select>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
         <input type="checkbox" id="auto-download" style="width:auto;margin:0" checked> Auto-download after scan
       </label>
     </div>
     <div id="new-sched-wrap" style="display:none;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Schedule (optional)</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Schedule (optional)</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
           <input type="checkbox" id="new-sched-enabled" style="width:auto;margin:0"> Enable recurring scan
         </label>
         <select id="new-sched-interval" style="width:auto;padding:4px 8px;font-size:12px">
@@ -665,17 +813,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-sources" class="tab-content">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Sources (%d)</span></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Source</th><th>Media</th><th>Actions</th></tr></thead>
-      <tbody id="sources-tbody">%s</tbody>
-    </table></div>
-    <div class="pager" id="pager-sources"></div>
-  </div>
+  <h1 class="page-title">Sources <span style="font-size:14px;color:#475569;font-weight:400">(%d)</span></h1>
+  <div id="sources-list">%s</div>
+  <div class="pager" id="pager-sources"></div>
 </div>
 
 <div id="tab-media" class="tab-content">
+  <h1 class="page-title">Media Library</h1>
   <div class="card">
     <div class="card-header">
       <span class="card-title">Media Items (%d)</span>
@@ -689,7 +833,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th style="width:130px"></th><th>Title</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="media-tbody">%s</tbody>
     </table></div>
     <div class="pager" id="pager-media"></div>
@@ -697,6 +841,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-tasks" class="tab-content">
+  <h1 class="page-title">Tasks</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><button class="btn-sm btn-orange" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
@@ -708,6 +853,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-schedules" class="tab-content">
+  <h1 class="page-title">Schedules</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Schedules (%d)</span></div>
     <div class="table-wrap"><table>
@@ -719,6 +865,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-cookies" class="tab-content">
+  <h1 class="page-title">Cookie Management</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Cookie Status</span></div>
     <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:14px">
@@ -736,14 +883,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="card-header"><span class="card-title">Upload Cookies</span></div>
     <p class="src-meta" style="margin-bottom:10px">Upload a <code>cookies.txt</code> file (Netscape format) or paste cookie content below.</p>
     <div style="margin-bottom:10px">
-      <label style="display:inline-block;padding:6px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;cursor:pointer;font-size:13px;color:#93c5fd">
+      <label style="display:inline-block;padding:6px 14px;background:var(--badge-muted-bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;color:var(--primary)">
         Choose File <input type="file" id="ck-file" accept=".txt" style="display:none" onchange="document.getElementById('ck-filename').textContent=this.files[0]?.name||''">
       </label>
       <span id="ck-filename" class="src-meta" style="margin-left:8px"></span>
     </div>
     <div style="margin-bottom:10px">
       <label>Or paste content:</label>
-      <textarea id="ck-paste" rows="6" style="width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;color:#e5e7eb;font-family:monospace;font-size:12px;resize:vertical" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."></textarea>
+      <textarea id="ck-paste" rows="6" style="width:100%%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:monospace;font-size:12px;resize:vertical" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."></textarea>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn-primary" onclick="uploadCookies()">Save Cookies</button>
@@ -776,8 +923,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <details style="margin-bottom:10px">
         <summary style="cursor:pointer;color:#93c5fd;font-weight:600">Safari (macOS)</summary>
         <ol style="padding-left:20px;margin-top:6px;color:#cbd5e1">
-          <li>Install yt-dlp locally: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">brew install yt-dlp</code></li>
-          <li>Run: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com</code></li>
+          <li>Install yt-dlp locally: <code style="background:var(--badge-muted-bg);padding:2px 6px;border-radius:4px">brew install yt-dlp</code></li>
+          <li>Run: <code style="background:var(--badge-muted-bg);padding:2px 6px;border-radius:4px">yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com</code></li>
           <li>Upload the generated <code>cookies.txt</code> file above</li>
         </ol>
       </details>
@@ -788,6 +935,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-settings" class="tab-content">
+  <h1 class="page-title">Settings</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Download Settings</span></div>
     <div class="form-row">
@@ -811,12 +959,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <option value="title">Title only (Title.ext)</option>
       </select>
     </div>
-    <div style="margin:10px 0;padding:10px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
-      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Playlist overrides</div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer;margin-bottom:6px">
+    <div style="margin:10px 0;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Playlist overrides</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-bottom:6px">
         <input type="checkbox" id="cfg-pl-folder" style="width:auto;margin:0" checked> Use playlist name as folder for playlist sources
       </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
         <input type="checkbox" id="cfg-pl-file" style="width:auto;margin:0" checked> Use playlist index + title as filename for playlist sources
       </label>
     </div>
@@ -860,6 +1008,18 @@ tr:hover td{background:rgba(255,255,255,.02)}
 
 </div>
 <script>
+function toggleTheme(){
+  const html=document.documentElement;
+  const isDark=html.dataset.theme!=='light';
+  html.dataset.theme=isDark?'light':'dark';
+  localStorage.setItem('theme',html.dataset.theme);
+  document.getElementById('theme-btn').innerHTML=isDark?'&#9788; Light':'&#9790; Dark';
+}
+function toggleSidebar(){
+  const s=document.getElementById('sidebar');
+  s.classList.toggle('collapsed');
+  sessionStorage.setItem('sidebarCollapsed',s.classList.contains('collapsed')?'1':'');
+}
 function showTab(name){
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(el=>el.classList.remove('active'));
@@ -1269,8 +1429,9 @@ function initPager(tbodyId,pagerId,defaultSize){
   const pager=document.getElementById(pagerId);
   if(!tbody||!pager)return;
   let page=0,size=defaultSize||20;
-  function getRows(){return Array.from(tbody.querySelectorAll('tr')).filter(r=>r.style.display!=='none'||r.dataset.source!==undefined);}
-  function allRows(){return Array.from(tbody.querySelectorAll('tr'));}
+  const tag=tbody.tagName==='TBODY'?'tr':':scope > *';
+  function getRows(){return Array.from(tbody.querySelectorAll(tag)).filter(r=>r.style.display!=='none'||r.dataset.source!==undefined);}
+  function allRows(){return Array.from(tbody.querySelectorAll(tag));}
   function render(){
     const rows=allRows();
     const visibleRows=rows.filter(r=>!r.dataset.hidden);
@@ -1335,6 +1496,10 @@ async function saveConfig(){
   if(res.ok){toast('Settings saved','ok');}else{toast('Failed to save','err');}
 }
 window.onload=function(){
+  // Restore theme
+  const savedTheme=localStorage.getItem('theme');
+  if(savedTheme){document.documentElement.dataset.theme=savedTheme;document.getElementById('theme-btn').innerHTML=savedTheme==='light'?'&#9788; Light':'&#9790; Dark';}
+  if(sessionStorage.getItem('sidebarCollapsed')==='1')document.getElementById('sidebar').classList.add('collapsed');
   const h=location.hash.slice(1);
   showTab(['new','sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
   // Restore scroll position after reload
@@ -1347,7 +1512,7 @@ window.onload=function(){
     }
   }).catch(()=>{});
   // Init pagers
-  initPager('sources-tbody','pager-sources',20);
+  initPager('sources-list','pager-sources',20);
   initPager('media-tbody','pager-media',20);
   initPager('tasks-tbody','pager-tasks',20);
   initPager('schedules-tbody','pager-schedules',20);
@@ -1364,7 +1529,14 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 
 	// Cookie status for nav badge and cookies tab
 	ckExists, ckSize, ckMtime, ckStatus, ckClass := a.cookieStatusForUI()
-	ckNavBadge := fmt.Sprintf(`<span class="badge %s" style="margin-left:4px;font-size:9px">%s</span>`, ckClass, html.EscapeString(ckStatus))
+	// Status dot for sidebar: ok=green, warn/pending=amber, failed=red
+	dotClass := "err"
+	if ckClass == "badge-succeeded" {
+		dotClass = "ok"
+	} else if ckClass == "badge-pending" {
+		dotClass = "warn"
+	}
+	ckNavBadge := fmt.Sprintf(`<span class="status-dot %s" title="%s"></span>`, dotClass, html.EscapeString(ckStatus))
 	ckPathDisplay := html.EscapeString(a.cookiesPath)
 	ckStatusBadge := fmt.Sprintf(`<span class="badge %s">%s</span>`, ckClass, html.EscapeString(ckStatus))
 	if !ckExists {
@@ -1373,8 +1545,8 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 	}
 
 	_, _ = w.Write([]byte(fmt.Sprintf(page,
-		ckNavBadge,                                                       // cookies nav badge
-		len(sources), len(allMedia), len(tasks), len(schedules),         // nav stats
+		len(sources), len(allMedia), len(tasks), len(schedules),         // sidebar counts
+		ckNavBadge,                                                       // cookies badge in sidebar
 		addDateAfterOpts,                                                // add-source date filter options
 		len(sources), strings.Join(sourceRows, ""),                      // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
