@@ -339,9 +339,12 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		}
 
+		thumb := fmt.Sprintf(`<img src="https://img.youtube.com/vi/%s/mqdefault.jpg" style="width:100px;border-radius:8px;vertical-align:middle" loading="lazy" onerror="this.style.display='none'">`,
+			html.EscapeString(m.VideoID))
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<tr data-source="%s"><td title="%s">%s</td><td class="src-meta">%s</td><td>%s</td><td>%s</td></tr>`,
+			`<tr data-source="%s"><td style="width:110px;white-space:normal">%s</td><td title="%s">%s</td><td class="src-meta">%s</td><td>%s</td><td class="row-actions">%s</td></tr>`,
 			html.EscapeString(m.SourceID),
+			thumb,
 			html.EscapeString(m.Title), html.EscapeString(m.Title),
 			html.EscapeString(dur),
 			statusBadge(string(m.Status)),
@@ -349,7 +352,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		))
 	}
 	if len(mediaRows) == 0 {
-		mediaRows = []string{`<tr><td colspan="4" class="empty">No media yet.<br><span class="src-meta">Add a source from the Sources tab — videos will appear here after scanning.</span></td></tr>`}
+		mediaRows = []string{`<tr><td colspan="5" class="empty">No media yet.<br><span class="src-meta">Add a source from the + New tab — videos will appear here after scanning.</span></td></tr>`}
 	}
 
 	// ── Task rows ─────────────────────────────────────────────────────────────
@@ -416,7 +419,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
-			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
+			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td class="row-actions">%s</td></tr>`,
 			html.EscapeString(typeLabel),
 			html.EscapeString(entityName), html.EscapeString(entityName),
 			statusCell,
@@ -518,101 +521,123 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YtVault</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Inter,system-ui,sans-serif;background:#0b1220;color:#e5e7eb;min-height:100vh}
-nav{display:flex;align-items:center;gap:12px;padding:0 20px;height:52px;background:#0f172a;border-bottom:1px solid #1e293b;position:sticky;top:0;z-index:100}
-.logo{font-size:17px;font-weight:700;color:#f1f5f9;margin-right:4px}
-.nav-tabs{display:flex;gap:2px}
-.nav-tab{background:none;border:none;color:#94a3b8;font-size:14px;font-weight:500;padding:5px 12px;border-radius:8px;cursor:pointer}
-.nav-tab:hover{color:#e5e7eb;background:#1e293b}
-.nav-tab.active{color:#60a5fa;background:#172033}
-.nav-stats{margin-left:auto;display:flex;gap:6px}
-.stat-pill{background:#172033;border:1px solid #1e3a5f;color:#93c5fd;font-size:11px;padding:2px 9px;border-radius:999px;cursor:pointer}.stat-pill:hover{background:#1e3a5f}
-.main{padding:20px;max-width:1300px;margin:0 auto}
+body{font-family:'Inter',system-ui,sans-serif;background:linear-gradient(135deg,#0a0e1a 0%%,#0d1525 50%%,#0a1628 100%%);color:#e2e8f0;min-height:100vh}
+/* ── Sidebar ── */
+.sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:rgba(10,15,28,0.85);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column;z-index:200;padding:0}
+.sidebar-logo{padding:24px 20px 20px;font-size:20px;font-weight:700;color:#f1f5f9;letter-spacing:-0.5px}
+.sidebar-logo span{color:#3b82f6}
+.sidebar-section{padding:0 12px;margin-bottom:4px}
+.sidebar-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#475569;padding:12px 8px 6px}
+.nav-tab{display:flex;align-items:center;gap:10px;width:100%%;background:none;border:none;color:#94a3b8;font-size:13px;font-weight:500;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left}
+.nav-tab:hover{color:#e2e8f0;background:rgba(255,255,255,0.05)}
+.nav-tab.active{color:#60a5fa;background:rgba(59,130,246,0.1);box-shadow:inset 3px 0 0 #3b82f6}
+.nav-tab .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-tab .count{margin-left:auto;font-size:11px;color:#475569;font-weight:400}
+.sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid rgba(255,255,255,0.04)}
+/* ── Main area ── */
+.main{margin-left:220px;padding:28px 32px;min-height:100vh}
+.page-title{font-size:22px;font-weight:700;color:#f1f5f9;margin-bottom:20px;letter-spacing:-0.3px}
 .tab-content{display:none}.tab-content.active{display:block}
-.card{background:#121a2b;border:1px solid #1e293b;border-radius:12px;padding:18px;margin-bottom:18px}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
-.card-title{font-size:15px;font-weight:600;color:#f1f5f9}
-.form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:10px;align-items:end}
-.form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:10px;align-items:end}
-label{font-size:13px;color:#94a3b8;margin-bottom:3px;display:block}
-select,input[type=text]{width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:7px 10px;color:#e5e7eb;font-size:13px}
-select:focus,input:focus{outline:none;border-color:#3b82f6}
-button{border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer}
-.btn-primary{background:#2563eb;color:#fff;padding:8px 18px}
-.btn-primary:hover{background:#1d4ed8}
-.btn-sm{padding:3px 9px;font-size:12px}
-.btn-blue{background:#1e3a5f;color:#93c5fd;border:1px solid #2d5a8e}
-.btn-blue:hover{background:#1a3356}
-.btn-green{background:#14532d;color:#86efac;border:1px solid #166534}
-.btn-green:hover{background:#115225}
-.btn-orange{background:#431407;color:#fb923c;border:1px solid #7c2d12}
-.btn-orange:hover{background:#3a1006}
-.btn-red{background:#450a0a;color:#fca5a5;border:1px solid #7f1d1d}
-.btn-gray{background:#1e293b;color:#94a3b8;border:1px solid #334155}
-.btn-gray:hover{background:#243044}
+/* ── Glass cards ── */
+.card{background:rgba(15,23,42,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:0 8px 32px rgba(0,0,0,0.25)}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.card-title{font-size:15px;font-weight:600;color:#f1f5f9;letter-spacing:-0.2px}
+/* ── Forms ── */
+.form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:12px;align-items:end}
+.form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:12px;align-items:end}
+label{font-size:13px;color:#64748b;margin-bottom:3px;display:block;font-weight:500}
+select,input[type=text],textarea{width:100%%;background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:8px 12px;color:#e2e8f0;font-size:13px;font-family:inherit;transition:border-color 0.2s}
+select:focus,input:focus,textarea:focus{outline:none;border-color:rgba(59,130,246,0.5);box-shadow:0 0 0 3px rgba(59,130,246,0.1)}
+/* ── Buttons ── */
+button{border:none;border-radius:10px;font-weight:600;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
+.btn-primary{background:linear-gradient(135deg,#2563eb,#3b82f6);color:#fff;padding:9px 20px;box-shadow:0 2px 12px rgba(37,99,235,0.3)}
+.btn-primary:hover{background:linear-gradient(135deg,#1d4ed8,#2563eb);box-shadow:0 4px 16px rgba(37,99,235,0.4);transform:translateY(-1px)}
+.btn-sm{padding:4px 10px;font-size:12px;border-radius:8px}
+.btn-blue{background:rgba(30,58,95,0.7);color:#93c5fd;border:1px solid rgba(59,130,246,0.2)}
+.btn-blue:hover{background:rgba(30,58,95,0.9);box-shadow:0 0 12px rgba(59,130,246,0.15)}
+.btn-green{background:rgba(20,83,45,0.7);color:#86efac;border:1px solid rgba(34,197,94,0.2)}
+.btn-green:hover{background:rgba(20,83,45,0.9);box-shadow:0 0 12px rgba(34,197,94,0.15)}
+.btn-orange{background:rgba(67,20,7,0.7);color:#fb923c;border:1px solid rgba(249,115,22,0.2)}
+.btn-orange:hover{background:rgba(67,20,7,0.9);box-shadow:0 0 12px rgba(249,115,22,0.15)}
+.btn-red{background:rgba(69,10,10,0.7);color:#fca5a5;border:1px solid rgba(239,68,68,0.2)}
+.btn-gray{background:rgba(30,41,59,0.7);color:#94a3b8;border:1px solid rgba(255,255,255,0.08)}
+.btn-gray:hover{background:rgba(30,41,59,0.9)}
+/* ── Tables ── */
 .table-wrap{overflow-x:auto}
 table{width:100%%;border-collapse:collapse;font-size:13px}
-th{color:#94a3b8;font-weight:500;padding:9px 8px;border-bottom:1px solid #1e293b;text-align:left;white-space:nowrap}
-td{padding:9px 8px;border-bottom:1px solid #111827;vertical-align:top;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+th{color:#64748b;font-weight:500;padding:10px 10px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:left;white-space:nowrap;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:top;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.02)}
-.badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:600;white-space:nowrap}
-.badge-queued{background:#1e3a5f;color:#93c5fd}
-.badge-running{background:#3b1d00;color:#fb923c}
-.badge-succeeded{background:#14532d;color:#86efac}
-.badge-failed{background:#3b0f0f;color:#fca5a5}
-.badge-pending{background:#1e293b;color:#94a3b8}
-.badge-downloading{background:#3b1d00;color:#fb923c}
-.badge-done{background:#14532d;color:#86efac}
-.badge-missing{background:#431407;color:#fb923c}
-.badge-enabled{background:#14532d;color:#86efac}
-.badge-disabled{background:#1e293b;color:#94a3b8}
-.tag{display:inline-flex;align-items:center;background:#172033;border:1px solid #31415f;border-radius:999px;padding:2px 7px;font-size:11px;color:#bfdbfe}
+tr:hover td{background:rgba(255,255,255,0.02)}
+tr:hover .row-actions{opacity:1}
+.row-actions{opacity:0.4;transition:opacity 0.2s}
+/* ── Badges & tags ── */
+.badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;white-space:nowrap;backdrop-filter:blur(4px)}
+.badge-queued{background:rgba(30,58,95,0.6);color:#93c5fd}
+.badge-running{background:rgba(59,29,0,0.6);color:#fb923c}
+.badge-running::before{content:'';width:6px;height:6px;border-radius:50%%;background:#fb923c;animation:pulse 1.5s infinite}
+.badge-succeeded{background:rgba(20,83,45,0.5);color:#86efac}
+.badge-failed{background:rgba(59,15,15,0.6);color:#fca5a5}
+.badge-pending{background:rgba(30,41,59,0.6);color:#94a3b8}
+.badge-downloading{background:rgba(59,29,0,0.6);color:#fb923c}
+.badge-downloading::before{content:'';width:6px;height:6px;border-radius:50%%;background:#fb923c;animation:pulse 1.5s infinite}
+.badge-done{background:rgba(20,83,45,0.5);color:#86efac}
+.badge-done::before{content:'';width:6px;height:6px;border-radius:50%%;background:#86efac}
+.badge-missing{background:rgba(67,20,7,0.6);color:#fb923c}
+.badge-enabled{background:rgba(20,83,45,0.5);color:#86efac}
+.badge-enabled::before{content:'';width:6px;height:6px;border-radius:50%%;background:#86efac}
+.badge-disabled{background:rgba(30,41,59,0.6);color:#94a3b8}
+@keyframes pulse{0%%,100%%{opacity:1}50%%{opacity:0.3}}
+.tag{display:inline-flex;align-items:center;background:rgba(23,32,51,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:999px;padding:2px 8px;font-size:11px;color:#93c5fd}
 .src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src-meta{color:#94a3b8;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-meta{color:#64748b;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
-#toast{position:fixed;bottom:20px;right:20px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
-.toast-msg{background:#1e293b;border-radius:10px;padding:10px 14px;font-size:13px;max-width:340px;border-left:3px solid #3b82f6;pointer-events:auto;animation:tslide .2s ease}
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast-msg{background:rgba(15,23,42,0.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 16px;font-size:13px;max-width:360px;border-left:3px solid #3b82f6;pointer-events:auto;animation:tslide .25s ease;box-shadow:0 8px 32px rgba(0,0,0,0.4)}
 .toast-ok{border-color:#22c55e;color:#86efac}
 .toast-err{border-color:#ef4444;color:#fca5a5}
 .toast-info{border-color:#3b82f6;color:#93c5fd}
-@keyframes tslide{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-.empty{color:#4b5563;text-align:center;padding:28px;font-size:13px}
-.pager{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:12px;color:#94a3b8}
-.pager select{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:3px 4px;color:#e5e7eb;font-size:11px;width:auto;min-width:0}
-.pager button{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:3px 10px;color:#94a3b8;font-size:12px;cursor:pointer}
-.pager button:hover:not(:disabled){background:#243044;color:#e5e7eb}
-.pager button:disabled{opacity:0.4;cursor:default}
-@media(max-width:768px){.form-row,.form-row-3{grid-template-columns:1fr}.nav-stats{display:none}}
+@keyframes tslide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.empty{color:#475569;text-align:center;padding:32px;font-size:13px}
+/* ── Pager ── */
+.pager{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:12px;color:#64748b}
+.pager select{background:rgba(15,23,42,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:4px 6px;color:#e2e8f0;font-size:11px;width:auto;min-width:0}
+.pager button{background:rgba(30,41,59,0.7);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:4px 12px;color:#94a3b8;font-size:12px;cursor:pointer}
+.pager button:hover:not(:disabled){background:rgba(30,41,59,0.9);color:#e2e8f0}
+.pager button:disabled{opacity:0.3;cursor:default}
+/* ── Responsive ── */
+@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-tab span:not(.icon),.sidebar-label,.sidebar-logo span,.nav-tab .count{display:none}.sidebar-logo{padding:16px 12px;font-size:16px}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}}
 </style>
 </head>
 <body>
-<nav>
-  <span class="logo">YtVault</span>
-  <div class="nav-tabs">
-    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')">+ New</button>
-    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')">Sources</button>
-    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')">Media</button>
-    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')">Tasks</button>
-    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')">Schedules</button>
-    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')">Cookies %s</button>
-    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')">Settings</button>
+<aside class="sidebar">
+  <div class="sidebar-logo">Yt<span>Vault</span></div>
+  <div class="sidebar-section">
+    <div class="sidebar-label">Main</div>
+    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span>New Source</span></button>
+    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span>Sources</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span>Media</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span>Tasks</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')"><span class="icon">&#128337;</span> <span>Schedules</span> <span class="count">%d</span></button>
   </div>
-  <div class="nav-stats">
-    <span class="stat-pill" onclick="showTab('sources')">%d sources</span>
-    <span class="stat-pill" onclick="showTab('media')">%d media</span>
-    <span class="stat-pill" onclick="showTab('tasks')">%d tasks</span>
-    <span class="stat-pill" onclick="showTab('schedules')">%d schedules</span>
+  <div class="sidebar-section">
+    <div class="sidebar-label">System</div>
+    <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')"><span class="icon">&#128274;</span> <span>Cookies</span> %s</button>
+    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span>Settings</span></button>
   </div>
-</nav>
+</aside>
 <div id="toast"></div>
 <div class="main">
 
 <div id="tab-new" class="tab-content">
+  <h1 class="page-title">Add New Source</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Search YouTube</span></div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -665,6 +690,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-sources" class="tab-content">
+  <h1 class="page-title">Sources</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Sources (%d)</span></div>
     <div class="table-wrap"><table>
@@ -676,6 +702,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-media" class="tab-content">
+  <h1 class="page-title">Media Library</h1>
   <div class="card">
     <div class="card-header">
       <span class="card-title">Media Items (%d)</span>
@@ -689,7 +716,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th></th><th>Title</th><th>Duration</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody id="media-tbody">%s</tbody>
     </table></div>
     <div class="pager" id="pager-media"></div>
@@ -697,6 +724,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-tasks" class="tab-content">
+  <h1 class="page-title">Tasks</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><button class="btn-sm btn-orange" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
@@ -708,6 +736,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-schedules" class="tab-content">
+  <h1 class="page-title">Schedules</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Schedules (%d)</span></div>
     <div class="table-wrap"><table>
@@ -719,6 +748,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-cookies" class="tab-content">
+  <h1 class="page-title">Cookie Management</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Cookie Status</span></div>
     <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:14px">
@@ -788,6 +818,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 
 <div id="tab-settings" class="tab-content">
+  <h1 class="page-title">Settings</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Download Settings</span></div>
     <div class="form-row">
@@ -1373,8 +1404,8 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 	}
 
 	_, _ = w.Write([]byte(fmt.Sprintf(page,
-		ckNavBadge,                                                       // cookies nav badge
-		len(sources), len(allMedia), len(tasks), len(schedules),         // nav stats
+		len(sources), len(allMedia), len(tasks), len(schedules),         // sidebar counts
+		ckNavBadge,                                                       // cookies badge in sidebar
 		addDateAfterOpts,                                                // add-source date filter options
 		len(sources), strings.Join(sourceRows, ""),                      // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
