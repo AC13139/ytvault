@@ -381,6 +381,18 @@ func (a *App) handleTogglePin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"pinned": pinned})
 }
 
+// resolveRetention returns the effective retention days for a source.
+// 0 = use global default, -1 = keep forever (override), >0 = specific days.
+func (a *App) resolveRetention(src models.Source) int {
+	if src.RetentionDays == -1 {
+		return 0 // keep forever — no cleanup
+	}
+	if src.RetentionDays > 0 {
+		return src.RetentionDays
+	}
+	return a.store.GetConfig().DefaultRetentionDays
+}
+
 func (a *App) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	src, ok := a.store.GetSource(id)
@@ -388,10 +400,7 @@ func (a *App) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "source_not_found", "source not found")
 		return
 	}
-	days := src.RetentionDays
-	if days == 0 {
-		days = a.store.GetConfig().DefaultRetentionDays
-	}
+	days := a.resolveRetention(src)
 	if days == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"eligible": 0, "pinned": 0, "retentionDays": 0})
 		return
@@ -407,10 +416,7 @@ func (a *App) handleCleanup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "source_not_found", "source not found")
 		return
 	}
-	days := src.RetentionDays
-	if days == 0 {
-		days = a.store.GetConfig().DefaultRetentionDays
-	}
+	days := a.resolveRetention(src)
 	if days == 0 {
 		writeJSON(w, http.StatusOK, map[string]any{"removed": 0, "message": "no retention policy set"})
 		return

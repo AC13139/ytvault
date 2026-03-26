@@ -187,9 +187,11 @@ func (w *Worker) runIndex(task models.Task) error {
 		log.Printf("worker: auto-started %d download task(s) for source %s", len(dlTasks), src.ID)
 	}
 
-	// Auto-cleanup: remove old media based on retention policy
+	// Auto-cleanup: -1 = keep forever, 0 = use global default, >0 = specific days
 	retDays := src.RetentionDays
-	if retDays == 0 {
+	if retDays == -1 {
+		retDays = 0
+	} else if retDays == 0 {
 		retDays = w.store.GetConfig().DefaultRetentionDays
 	}
 	if retDays > 0 {

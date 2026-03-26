@@ -128,7 +128,32 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 
 // ── Actions cell ──────────────────────────────────────────────────────────────
 
-func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool) string {
+var retentionOptions = []struct{ v int; l string }{
+	{0, "Default"},
+	{30, "30 days"},
+	{60, "60 days"},
+	{90, "90 days"},
+	{180, "180 days"},
+	{365, "1 year"},
+	{-1, "Keep forever"},
+}
+
+func buildRetentionSelect(sourceID string, current int) string {
+	sid := html.EscapeString(sourceID)
+	var b strings.Builder
+	fmt.Fprintf(&b, `<select id="ret-%s" style="width:auto;padding:3px;font-size:11px" onchange="setRetention('%s',this.value)">`, sid, sid)
+	for _, o := range retentionOptions {
+		sel := ""
+		if o.v == current {
+			sel = ` selected`
+		}
+		fmt.Fprintf(&b, `<option value="%d"%s>%s</option>`, o.v, sel, html.EscapeString(o.l))
+	}
+	b.WriteString(`</select>`)
+	return b.String()
+}
+
+func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool, retentionDays int) string {
 	sid := html.EscapeString(sourceID)
 	deleteBtn := fmt.Sprintf(
 		` <button class="btn-sm btn-orange" onclick="deleteSource(this,'%s')">Remove</button>`,
@@ -149,6 +174,7 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool)
 			sid, deleteBtn,
 		)
 	}
+	retSelect := buildRetentionSelect(sourceID, retentionDays)
 	cleanBtn := fmt.Sprintf(
 		` <button class="btn-sm btn-gray" onclick="cleanupSource('%s')">Clean up</button>`,
 		sid,
@@ -157,9 +183,11 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool)
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
 			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s%s%s`+
-			`</div>`,
+			`</div>`+
+			`<div style="display:flex;gap:4px;align-items:center;margin-top:4px"><span class="src-meta">Retention:</span>%s</div>`,
 		sid, buildDateAfterOptions(""),
 		sid, sid, schedBtn, cleanBtn, deleteBtn,
+		retSelect,
 	)
 }
 
@@ -244,7 +272,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			"<tr><td>%s</td><td>%s</td><td>%s</td></tr>",
 			detail,
 			mediaCell,
-			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }()),
+			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }(), s.RetentionDays),
 		))
 	}
 	if len(sourceRows) == 0 {
@@ -1143,6 +1171,14 @@ function dismissTask(btn,taskId){
     if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
     else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
+}
+async function setRetention(sourceId,value){
+  const days=parseInt(value);
+  const res=await fetch('/api/v1/sources/'+sourceId+'/retention',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({retentionDays:days})});
+  if(res.ok){
+    const label=days===0?'default':days===-1?'keep forever':days+' days';
+    toast('Retention set: '+label,'ok');
+  }else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
 async function quickSchedule(sourceId){
   const body={intervalHours:24,enabled:true,autoDownload:true,dateAfter:''};
