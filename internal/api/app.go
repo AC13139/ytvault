@@ -370,6 +370,10 @@ func (a *App) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleDownloadMedia(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Reset missing items to pending before creating download task
+	if item, ok := a.store.GetMediaItem(id); ok && item.Status == models.MediaItemStatusMissing {
+		_ = a.store.RetryMediaItem(id)
+	}
 	task, err := a.store.CreateDownloadTask(id)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "download_failed", err.Error())
@@ -408,9 +412,14 @@ func (a *App) handleDownloadAllPending(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
-	if err := a.store.DeleteMediaItem(r.PathValue("id")); err != nil {
+	deleted, err := a.store.DeleteMediaItem(r.PathValue("id"))
+	if err != nil {
 		writeError(w, http.StatusNotFound, "delete_failed", err.Error())
 		return
+	}
+	// Delete the physical file if it exists
+	if deleted.FilePath != "" {
+		os.Remove(deleted.FilePath)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -185,6 +185,9 @@ func (a *App) cookieStatusForUI() (exists bool, sizeStr string, modTimeStr strin
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
+	// Verify downloaded files still exist on disk
+	a.store.VerifyMediaFiles()
+
 	sources := a.store.ListSources()
 	tasks := a.store.ListTasks()
 	schedules := a.store.ListSchedules()
@@ -287,6 +290,10 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		case models.MediaItemStatusDone:
 			action = fmt.Sprintf(
 				`<button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid)
+		case models.MediaItemStatusMissing:
+			action = fmt.Sprintf(
+				`<button class="btn-sm btn-blue" onclick="withLoading(this,()=>downloadMedia('%s'))">Re-download</button>`+
+					` <button class="btn-sm btn-orange" onclick="dismissMedia(this,'%s')">Remove</button>`, mid, mid)
 		}
 
 		mediaRows = append(mediaRows, fmt.Sprintf(
@@ -516,6 +523,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .badge-pending{background:#1e293b;color:#94a3b8}
 .badge-downloading{background:#3b1d00;color:#fb923c}
 .badge-done{background:#14532d;color:#86efac}
+.badge-missing{background:#431407;color:#fb923c}
 .badge-enabled{background:#14532d;color:#86efac}
 .badge-disabled{background:#1e293b;color:#94a3b8}
 .tag{display:inline-flex;align-items:center;background:#172033;border:1px solid #31415f;border-radius:999px;padding:2px 7px;font-size:11px;color:#bfdbfe}

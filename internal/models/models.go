@@ -66,6 +66,7 @@ const (
 	MediaItemStatusDownloading MediaItemStatus = "downloading"
 	MediaItemStatusDone        MediaItemStatus = "done"
 	MediaItemStatusFailed      MediaItemStatus = "failed"
+	MediaItemStatusMissing     MediaItemStatus = "missing"
 )
 
 type MediaItem struct {

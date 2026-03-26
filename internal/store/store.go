@@ -478,19 +478,22 @@ func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, 
 }
 
 // DeleteMediaItem removes a media item and its related completed tasks.
-func (s *Store) DeleteMediaItem(id string) error {
+// DeleteMediaItem removes a media item and returns it (so the caller can delete the file).
+func (s *Store) DeleteMediaItem(id string) (models.MediaItem, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var deleted models.MediaItem
 	found := false
 	for i, m := range s.state.MediaItems {
 		if m.ID == id {
+			deleted = m
 			s.state.MediaItems = append(s.state.MediaItems[:i], s.state.MediaItems[i+1:]...)
 			found = true
 			break
 		}
 	}
 	if !found {
-		return fmt.Errorf("media item %s not found", id)
+		return models.MediaItem{}, fmt.Errorf("media item %s not found", id)
 	}
 	// Remove related completed tasks
 	var tasks []models.Task
@@ -501,17 +504,44 @@ func (s *Store) DeleteMediaItem(id string) error {
 		tasks = append(tasks, t)
 	}
 	s.state.Tasks = tasks
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		return models.MediaItem{}, err
+	}
+	return deleted, nil
 }
 
-// RetryMediaItem resets a failed media item to pending status.
+// VerifyMediaFiles checks all "done" media items and marks any with missing
+// files as "missing". Returns the number of items marked.
+func (s *Store) VerifyMediaFiles() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	count := 0
+	for i := range s.state.MediaItems {
+		item := &s.state.MediaItems[i]
+		if item.Status != models.MediaItemStatusDone || item.FilePath == "" {
+			continue
+		}
+		if _, err := os.Stat(item.FilePath); os.IsNotExist(err) {
+			item.Status = models.MediaItemStatusMissing
+			item.UpdatedAt = time.Now().UTC()
+			count++
+		}
+	}
+	if count > 0 {
+		_ = s.saveLocked()
+	}
+	return count
+}
+
+// RetryMediaItem resets a failed or missing media item to pending status.
 func (s *Store) RetryMediaItem(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.state.MediaItems {
 		if s.state.MediaItems[i].ID == id {
-			if s.state.MediaItems[i].Status != models.MediaItemStatusFailed {
-				return fmt.Errorf("can only retry failed items, current status: %s", s.state.MediaItems[i].Status)
+			st := s.state.MediaItems[i].Status
+			if st != models.MediaItemStatusFailed && st != models.MediaItemStatusMissing {
+				return fmt.Errorf("can only retry failed or missing items, current status: %s", st)
 			}
 			s.state.MediaItems[i].Status = models.MediaItemStatusPending
 			s.state.MediaItems[i].ErrorMsg = ""
