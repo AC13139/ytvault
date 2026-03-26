@@ -114,7 +114,7 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px">`+
 			`<select id="sched-interval-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
 			`<select id="sched-dateafter-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">`+
+			`<label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">`+
 			`<input type="checkbox" id="sched-autodl-%s"%s style="width:auto;margin:0"> Auto-dl</label>`+
 			`<button class="btn-sm btn-blue" onclick="setSchedule('%s')">Set</button>%s`+
 			`</div>`,
@@ -583,10 +583,11 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 /* ── Sidebar ── */
 .sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:var(--sidebar-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;z-index:200;padding:0;transition:width 0.2s,background 0.3s}
 .sidebar.collapsed{width:56px}
-.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .count,.sidebar.collapsed .sidebar-logo span,.sidebar.collapsed .theme-toggle{display:none}
+.sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .count,.sidebar.collapsed .logo-text,.sidebar.collapsed .theme-toggle,.sidebar.collapsed .status-dot{display:none}
 .sidebar.collapsed .sidebar-logo{padding:16px 12px;text-align:center}
 .sidebar-logo{padding:20px 16px 16px;font-size:20px;font-weight:700;color:var(--text);letter-spacing:-0.5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-subtle);margin-bottom:4px}
-.sidebar-logo span{color:var(--primary)}
+.logo-text{white-space:nowrap}
+.logo-text b{color:var(--primary);font-weight:700}
 .sidebar-toggle{background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;padding:6px;border-radius:8px;transition:all 0.15s}
 .sidebar-toggle:hover{color:var(--text-secondary);background:var(--surface-hover)}
 .sidebar-section{padding:0 10px;margin-bottom:4px}
@@ -680,8 +681,9 @@ tr:hover .row-actions{opacity:1}
 .source-card .card-actions{opacity:0;transform:translateY(6px);transition:all 0.25s ease;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .source-card .source-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .source-card .source-header .src-title{font-size:15px;flex:1}
-.source-url{color:var(--text-faint);font-size:12px;text-decoration:none;transition:color 0.15s}
+.source-url{color:var(--text-muted);font-size:12px;text-decoration:none;transition:color 0.15s}
 .source-url:hover{color:var(--primary)}
+[data-theme="dark"] .source-url{color:#64748b}
 .progress-bar{height:6px;border-radius:3px;background:var(--border-subtle);overflow:hidden;margin:8px 0}
 .progress-bar .fill{height:100%%;border-radius:3px;background:linear-gradient(90deg,var(--primary),var(--success));transition:width 0.4s ease}
 .source-card:hover .progress-bar .fill{filter:brightness(1.05)}
@@ -712,7 +714,7 @@ tr:hover .row-actions{opacity:1}
 .thumb-status.st-downloading{background:rgba(59,29,0,0.8);color:#fb923c}
 .thumb-status.st-missing{background:rgba(67,20,7,0.8);color:#fb923c}
 .media-info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.media-info .m-title{font-weight:600;color:#f1f5f9;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.media-info .m-title{font-weight:600;color:var(--text);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .media-info .m-sub{font-size:12px;color:#475569}
 .filter-bar{display:flex;align-items:center;gap:8px}
 .filter-bar select{width:auto}
@@ -731,24 +733,24 @@ tr:hover .row-actions{opacity:1}
 .pager button:hover:not(:disabled){color:var(--text)}
 .pager button:disabled{opacity:0.3;cursor:default}
 /* ── Responsive ── */
-@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-label,.sidebar-label,.sidebar-logo span,.nav-tab .count,.sidebar-toggle{display:none}.sidebar-logo{padding:16px 12px;text-align:center}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}.thumb-wrap{width:80px;min-width:80px}}
+@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-label,.sidebar-label,.logo-text,.nav-tab .count,.sidebar-toggle,.status-dot,.theme-toggle{display:none}.sidebar-logo{padding:16px 12px;text-align:center}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}.thumb-wrap{width:80px;min-width:80px}}
 </style>
 </head>
 <body>
 <aside class="sidebar" id="sidebar">
-  <div class="sidebar-logo">Yt<span>Vault</span> <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button></div>
+  <div class="sidebar-logo"><span class="logo-text">Yt<b>Vault</b></span><button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button></div>
   <div class="sidebar-section">
     <div class="sidebar-label">Main</div>
-    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span>New Source</span></button>
-    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span>Sources</span> <span class="count">%d</span></button>
-    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span>Media</span> <span class="count">%d</span></button>
-    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span>Tasks</span> <span class="count">%d</span></button>
-    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')"><span class="icon">&#128337;</span> <span>Schedules</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span class="nav-label">New Source</span></button>
+    <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span class="nav-label">Sources</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span class="nav-label">Media</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span class="nav-label">Tasks</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')"><span class="icon">&#128337;</span> <span class="nav-label">Schedules</span> <span class="count">%d</span></button>
   </div>
   <div class="sidebar-section">
     <div class="sidebar-label">System</div>
     <button class="nav-tab" id="tab-btn-cookies" onclick="showTab('cookies')"><span class="icon">&#128274;</span> <span class="nav-label">Cookies</span> %s</button>
-    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span>Settings</span></button>
+    <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span class="nav-label">Settings</span></button>
   </div>
   <div class="sidebar-footer">
     <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">&#9790; Dark</button>
@@ -787,14 +789,14 @@ tr:hover .row-actions{opacity:1}
       <select id="add-dateafter">%s</select>
     </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
         <input type="checkbox" id="auto-download" style="width:auto;margin:0" checked> Auto-download after scan
       </label>
     </div>
     <div id="new-sched-wrap" style="display:none;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Schedule (optional)</div>
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Schedule (optional)</div>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#94a3b8;cursor:pointer">
+        <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
           <input type="checkbox" id="new-sched-enabled" style="width:auto;margin:0"> Enable recurring scan
         </label>
         <select id="new-sched-interval" style="width:auto;padding:4px 8px;font-size:12px">
@@ -881,14 +883,14 @@ tr:hover .row-actions{opacity:1}
     <div class="card-header"><span class="card-title">Upload Cookies</span></div>
     <p class="src-meta" style="margin-bottom:10px">Upload a <code>cookies.txt</code> file (Netscape format) or paste cookie content below.</p>
     <div style="margin-bottom:10px">
-      <label style="display:inline-block;padding:6px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;cursor:pointer;font-size:13px;color:#93c5fd">
+      <label style="display:inline-block;padding:6px 14px;background:var(--badge-muted-bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px;color:var(--primary)">
         Choose File <input type="file" id="ck-file" accept=".txt" style="display:none" onchange="document.getElementById('ck-filename').textContent=this.files[0]?.name||''">
       </label>
       <span id="ck-filename" class="src-meta" style="margin-left:8px"></span>
     </div>
     <div style="margin-bottom:10px">
       <label>Or paste content:</label>
-      <textarea id="ck-paste" rows="6" style="width:100%%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px;color:#e5e7eb;font-family:monospace;font-size:12px;resize:vertical" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."></textarea>
+      <textarea id="ck-paste" rows="6" style="width:100%%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-family:monospace;font-size:12px;resize:vertical" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	..."></textarea>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
       <button class="btn-primary" onclick="uploadCookies()">Save Cookies</button>
@@ -921,8 +923,8 @@ tr:hover .row-actions{opacity:1}
       <details style="margin-bottom:10px">
         <summary style="cursor:pointer;color:#93c5fd;font-weight:600">Safari (macOS)</summary>
         <ol style="padding-left:20px;margin-top:6px;color:#cbd5e1">
-          <li>Install yt-dlp locally: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">brew install yt-dlp</code></li>
-          <li>Run: <code style="background:#1e293b;padding:2px 6px;border-radius:4px">yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com</code></li>
+          <li>Install yt-dlp locally: <code style="background:var(--badge-muted-bg);padding:2px 6px;border-radius:4px">brew install yt-dlp</code></li>
+          <li>Run: <code style="background:var(--badge-muted-bg);padding:2px 6px;border-radius:4px">yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com</code></li>
           <li>Upload the generated <code>cookies.txt</code> file above</li>
         </ol>
       </details>
@@ -957,12 +959,12 @@ tr:hover .row-actions{opacity:1}
         <option value="title">Title only (Title.ext)</option>
       </select>
     </div>
-    <div style="margin:10px 0;padding:10px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
-      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:8px">Playlist overrides</div>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer;margin-bottom:6px">
+    <div style="margin:10px 0;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Playlist overrides</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer;margin-bottom:6px">
         <input type="checkbox" id="cfg-pl-folder" style="width:auto;margin:0" checked> Use playlist name as folder for playlist sources
       </label>
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#94a3b8;cursor:pointer">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);cursor:pointer">
         <input type="checkbox" id="cfg-pl-file" style="width:auto;margin:0" checked> Use playlist index + title as filename for playlist sources
       </label>
     </div>
