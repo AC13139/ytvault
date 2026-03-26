@@ -252,25 +252,32 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			pct = doneCount * 100 / mediaCount
 		}
 
+		kindClass := "tag-video"
+		if s.Kind == models.SourceKindChannel {
+			kindClass = "tag-channel"
+		} else if s.Kind == models.SourceKindPlaylist {
+			kindClass = "tag-playlist"
+		}
+
 		sourceRows = append(sourceRows, fmt.Sprintf(
 			`<div class="source-card">`+
 				`<div class="source-header">`+
 				`<div class="src-title" title="%s">%s</div>`+
-				`%s`+
+				`<span class="tag %s">%s</span>`+
+				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')" style="flex-shrink:0">View</button>`+
 				`</div>`+
-				`<div class="src-meta" title="%s"><a href="%s" target="_blank" style="color:rgba(96,165,250,0.8);text-decoration:none">%s</a></div>`+
-				`<div style="display:flex;align-items:center;gap:8px;margin-top:6px">`+
+				`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`+
+				`<div style="display:flex;align-items:center;gap:10px;margin-top:4px">`+
 				`<div class="progress-bar" style="flex:1"><div class="fill" style="width:%d%%"></div></div>`+
-				`<span class="src-meta">%d/%d</span>`+
-				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')">View</button>`+
+				`<span class="stat-num">%d / %d</span>`+
 				`</div>`+
 				`<div class="card-actions">%s</div>`+
 				`</div>`,
 			html.EscapeString(s.Title), html.EscapeString(s.Title),
-			tag(string(s.Kind)),
+			kindClass, html.EscapeString(string(s.Kind)),
+			html.EscapeString(s.ID),
 			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
 			pct, doneCount, mediaCount,
-			html.EscapeString(s.ID),
 			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }(), s.RetentionDays),
 		))
 	}
@@ -537,7 +544,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YtVault</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',system-ui,sans-serif;background:#080c16;color:#e2e8f0;min-height:100vh}
@@ -547,15 +554,15 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .sidebar.collapsed{width:56px}
 .sidebar.collapsed .nav-label,.sidebar.collapsed .sidebar-label,.sidebar.collapsed .count,.sidebar.collapsed .sidebar-logo span{display:none}
 .sidebar.collapsed .sidebar-logo{padding:16px 12px;text-align:center}
-.sidebar-logo{padding:24px 20px 20px;font-size:20px;font-weight:700;color:#f1f5f9;letter-spacing:-0.5px;display:flex;align-items:center;justify-content:space-between}
+.sidebar-logo{padding:20px 16px 16px;font-size:20px;font-weight:700;color:#f1f5f9;letter-spacing:-0.5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.04);margin-bottom:4px;background:rgba(255,255,255,0.01)}
 .sidebar-logo span{color:#3b82f6}
-.sidebar-toggle{background:none;border:none;color:#475569;font-size:16px;cursor:pointer;padding:4px;border-radius:6px}
-.sidebar-toggle:hover{color:#94a3b8;background:rgba(255,255,255,0.05)}
+.sidebar-toggle{background:none;border:none;color:#475569;font-size:14px;cursor:pointer;padding:6px;border-radius:8px;transition:all 0.15s}
+.sidebar-toggle:hover{color:#94a3b8;background:rgba(255,255,255,0.06)}
 .sidebar-section{padding:0 10px;margin-bottom:4px}
 .sidebar-label{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#334155;padding:14px 8px 6px}
 .nav-tab{position:relative;display:flex;align-items:center;gap:10px;width:100%%;background:none;border:none;color:#94a3b8;font-size:13px;font-weight:500;padding:9px 12px;border-radius:10px;cursor:pointer;transition:all 0.15s;text-align:left;border-left:3px solid transparent}
 .nav-tab:hover{color:#e2e8f0;background:rgba(255,255,255,0.04)}
-.nav-tab.active{color:#60a5fa;background:rgba(59,130,246,0.08);border-left-color:#3b82f6;box-shadow:0 0 20px rgba(59,130,246,0.08)}
+.nav-tab.active{color:#60a5fa;background:rgba(59,130,246,0.08);border-left-color:#3b82f6;box-shadow:0 0 15px rgba(59,130,246,0.15),inset 0 0 20px rgba(59,130,246,0.03)}
 .nav-tab .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
 .nav-tab .count{margin-left:auto;font-size:10px;color:#475569;font-weight:500;background:rgba(255,255,255,0.04);padding:1px 7px;border-radius:99px}
 .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%%;margin-left:auto;flex-shrink:0}
@@ -607,7 +614,7 @@ tr:hover .row-actions{opacity:1}
 .badge-queued{background:rgba(30,58,95,0.6);color:#93c5fd}
 .badge-running{background:rgba(59,29,0,0.6);color:#fb923c}
 .badge-running::before{content:'';width:6px;height:6px;border-radius:50%%;background:#fb923c;animation:pulse 1.5s infinite}
-.badge-succeeded{background:rgba(20,83,45,0.5);color:#86efac}
+.badge-succeeded{background:rgba(20,83,45,0.3);color:rgba(134,239,172,0.7)}
 .badge-failed{background:rgba(59,15,15,0.6);color:#fca5a5}
 .badge-pending{background:rgba(30,41,59,0.6);color:#94a3b8}
 .badge-downloading{background:rgba(59,29,0,0.6);color:#fb923c}
@@ -628,18 +635,33 @@ tr:hover .row-actions{opacity:1}
 .empty-state .empty-text{color:#475569;font-size:14px}
 .empty-state .empty-sub{color:#334155;font-size:12px;margin-top:4px}
 .tag{display:inline-flex;align-items:center;background:rgba(23,32,51,0.8);border:1px solid rgba(255,255,255,0.08);border-radius:999px;padding:2px 8px;font-size:11px;color:#93c5fd}
-.src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.src-meta{color:#475569;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-title{font-weight:600;color:#f1f5f9;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.src-meta{color:rgba(71,85,105,0.7);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.input-container{max-width:800px}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
 /* ── Source cards ── */
-.source-card{background:linear-gradient(135deg,rgba(15,23,42,0.7),rgba(20,28,50,0.5));backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.05);border-radius:14px;padding:18px;margin-bottom:12px;transition:all 0.2s}
-.source-card:hover{border-color:rgba(59,130,246,0.15);box-shadow:0 4px 20px rgba(0,0,0,0.3)}
+.source-card{background:linear-gradient(145deg,rgba(15,23,42,0.7),rgba(20,28,50,0.4));backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.04);border-radius:14px;padding:20px;margin-bottom:12px;transition:transform 0.2s ease,border-color 0.2s ease,box-shadow 0.2s ease;cursor:default}
+.source-card:hover{border-color:rgba(59,130,246,0.2);box-shadow:0 6px 24px rgba(0,0,0,0.35);transform:translateY(-2px)}
 .source-card:hover .card-actions{opacity:1;transform:translateY(0)}
-.source-card .card-actions{opacity:0;transform:translateY(4px);transition:all 0.2s;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.source-card .source-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.source-card .card-actions{opacity:0;transform:translateY(6px);transition:all 0.25s ease;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.source-card .source-header{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .source-card .source-header .src-title{font-size:15px;flex:1}
-.progress-bar{height:4px;border-radius:2px;background:rgba(255,255,255,0.06);overflow:hidden;margin:6px 0}
-.progress-bar .fill{height:100%%;border-radius:2px;background:linear-gradient(90deg,#3b82f6,#22c55e);transition:width 0.3s}
+.source-url{color:rgba(100,116,139,0.5);font-size:12px;text-decoration:none;transition:color 0.15s}
+.source-url:hover{color:rgba(96,165,250,0.7)}
+.progress-bar{height:6px;border-radius:3px;background:rgba(255,255,255,0.05);overflow:hidden;margin:8px 0}
+.progress-bar .fill{height:100%%;border-radius:3px;background:linear-gradient(90deg,#3b82f6,#22c55e);transition:width 0.4s ease}
+.stat-num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:#64748b;letter-spacing:-0.3px}
+/* Kind badges with tinted backgrounds */
+.tag-video{background:rgba(30,41,59,0.8);border-color:rgba(148,163,184,0.15);color:#94a3b8}
+.tag-channel{background:rgba(88,28,135,0.2);border-color:rgba(168,85,247,0.15);color:#c084fc}
+.tag-playlist{background:rgba(30,58,95,0.3);border-color:rgba(59,130,246,0.15);color:#93c5fd}
+/* More actions menu */
+.more-btn{background:none;border:1px solid rgba(255,255,255,0.06);color:#475569;padding:4px 8px;font-size:14px;border-radius:8px;cursor:pointer;transition:all 0.15s;line-height:1}
+.more-btn:hover{color:#94a3b8;background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1)}
+.actions-popover{display:none;position:absolute;right:0;top:100%%;background:rgba(15,23,42,0.95);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:8px;min-width:180px;box-shadow:0 12px 40px rgba(0,0,0,0.5);z-index:50}
+.actions-popover.open{display:block}
+.actions-popover button{width:100%%;text-align:left;padding:7px 10px;border-radius:8px;background:none;color:#94a3b8;font-size:12px;font-weight:500;border:none}
+.actions-popover button:hover{background:rgba(255,255,255,0.05);color:#e2e8f0}
 /* ── Media thumbnails ── */
 .thumb-wrap{position:relative;width:120px;min-width:120px;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:rgba(15,23,42,0.8)}
 .thumb-wrap img{width:100%%;height:100%%;object-fit:cover;display:block}
@@ -696,8 +718,8 @@ tr:hover .row-actions{opacity:1}
   <h1 class="page-title">Add New Source</h1>
   <div class="card">
     <div class="card-header"><span class="card-title">Search YouTube</span></div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <input type="text" id="search-q" placeholder="Search by keywords…" style="flex:1" onkeydown="if(event.key==='Enter')searchYT()">
+    <div class="input-container" style="display:flex;gap:8px;margin-bottom:12px">
+      <input type="text" id="search-q" placeholder="Search YouTube by keywords…" style="flex:1;backdrop-filter:blur(10px)" onkeydown="if(event.key==='Enter')searchYT()">
       <button class="btn-primary" onclick="withLoading(this,searchYT)">Search</button>
     </div>
     <div id="search-results" style="display:none">
@@ -710,7 +732,7 @@ tr:hover .row-actions{opacity:1}
   <div class="card">
     <div class="card-header"><span class="card-title">Add Source</span></div>
     <input type="hidden" id="kind" value="video">
-    <div class="form-row">
+    <div class="form-row input-container">
       <label>YouTube URL</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="text" id="url" placeholder="https://www.youtube.com/..." style="flex:1" onkeydown="if(event.key==='Enter')submitForm()" oninput="autoDetectKind()">
