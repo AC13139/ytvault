@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,12 +152,13 @@ func (w *Worker) runIndex(task models.Task) error {
 	items := make([]models.MediaItem, len(videos))
 	for i, v := range videos {
 		items[i] = models.MediaItem{
-			SourceID: src.ID,
-			VideoID:  v.ID,
-			Title:    v.Title,
-			URL:      v.URL,
-			Duration: v.Duration,
-			Status:   models.MediaItemStatusPending,
+			SourceID:      src.ID,
+			VideoID:       v.ID,
+			Title:         v.Title,
+			URL:           v.URL,
+			Duration:      v.Duration,
+			PlaylistIndex: i + 1, // 1-based
+			Status:        models.MediaItemStatusPending,
 		}
 		if v.UploadDate != "" {
 			if t, err := time.Parse("20060102", v.UploadDate); err == nil {
@@ -223,6 +225,11 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	tmpl := cfg.FilenameTemplate
 	if src, ok := w.store.GetSource(item.SourceID); ok && src.Kind == models.SourceKindPlaylist {
 		tmpl = cfg.PlaylistTemplate
+	}
+	// Replace %(playlist_index)03d with actual stored index (yt-dlp doesn't have
+	// playlist context when downloading individual video URLs)
+	if item.PlaylistIndex > 0 {
+		tmpl = strings.Replace(tmpl, "%(playlist_index)03d", fmt.Sprintf("%03d", item.PlaylistIndex), 1)
 	}
 	filePath, err := ytdlp.Download(ctx, item.URL, w.downloadDir, tmpl, cfg.VideoFormat)
 	if err != nil {

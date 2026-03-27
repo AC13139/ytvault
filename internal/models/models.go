@@ -71,14 +71,15 @@ const (
 )
 
 type MediaItem struct {
-	ID         string          `json:"id"`
-	SourceID   string          `json:"sourceId"`
-	VideoID    string          `json:"videoId"`
-	Title      string          `json:"title"`
-	URL        string          `json:"url"`
-	Duration   int             `json:"duration,omitempty"`
-	UploadDate *time.Time      `json:"uploadDate,omitempty"` // YouTube upload date (nil = unknown)
-	Pinned     bool            `json:"pinned,omitempty"`     // pinned items are never auto-cleaned
+	ID            string          `json:"id"`
+	SourceID      string          `json:"sourceId"`
+	VideoID       string          `json:"videoId"`
+	Title         string          `json:"title"`
+	URL           string          `json:"url"`
+	Duration      int             `json:"duration,omitempty"`
+	PlaylistIndex int             `json:"playlistIndex,omitempty"` // 1-based index within playlist
+	UploadDate    *time.Time      `json:"uploadDate,omitempty"`    // YouTube upload date (nil = unknown)
+	Pinned        bool            `json:"pinned,omitempty"`        // pinned items are never auto-cleaned
 	Status     MediaItemStatus `json:"status"`
 	FilePath   string          `json:"filePath,omitempty"`
 	ErrorMsg   string          `json:"errorMessage,omitempty"`

@@ -153,41 +153,42 @@ func buildRetentionSelect(sourceID string, current int) string {
 	return b.String()
 }
 
-func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool, retentionDays int) string {
+func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool, retentionDays int, dateAfter string) string {
 	sid := html.EscapeString(sourceID)
-	deleteBtn := fmt.Sprintf(
-		` <button class="btn-sm btn-orange" onclick="deleteSource(this,'%s')">Remove</button>`,
-		sid,
-	)
-	schedBtn := ""
-	if kind != models.SourceKindVideo && !hasSchedule {
-		schedBtn = fmt.Sprintf(
-			` <button class="btn-sm btn-green" onclick="withLoading(this,()=>quickSchedule('%s'))">Schedule</button>`,
-			sid,
-		)
-	}
 	if kind == models.SourceKindVideo {
 		return fmt.Sprintf(
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
-				`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',''))">Reindex</button>%s`+
+				`<button class="btn-sm btn-gray" title="Re-scan this video" onclick="withLoading(this,()=>reindexSource('%s',''))">Reindex</button>`+
+				` <button class="btn-sm btn-orange" title="Remove this source and its media" onclick="deleteSource(this,'%s')">Remove</button>`+
 				`</div>`,
-			sid, deleteBtn,
+			sid, sid,
 		)
 	}
-	retSelect := buildRetentionSelect(sourceID, retentionDays)
-	cleanBtn := fmt.Sprintf(
-		` <button class="btn-sm btn-gray" onclick="cleanupSource('%s')">Clean up</button>`,
-		sid,
-	)
+	schedBtn := ""
+	if !hasSchedule {
+		schedBtn = fmt.Sprintf(
+			` <button class="btn-sm btn-green" title="Set up recurring scan every 24h" onclick="withLoading(this,()=>quickSchedule('%s'))">Schedule</button>`,
+			sid,
+		)
+	}
 	return fmt.Sprintf(
 		`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
-			`<select id="scan-date-%s" style="width:auto;padding:4px 8px;font-size:12px">%s</select>`+
-			`<button class="btn-sm btn-gray" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>%s%s%s`+
+			`<span class="src-meta" style="font-size:11px">Scan:</span>`+
+			`<select id="scan-date-%s" style="width:auto;padding:3px 6px;font-size:11px" title="Date range for reindexing">%s</select>`+
+			`<button class="btn-sm btn-gray" title="Scan for new videos" onclick="withLoading(this,()=>reindexSource('%s',document.getElementById('scan-date-%s').value))">Reindex</button>`+
+			`%s`+
 			`</div>`+
-			`<div style="display:flex;gap:4px;align-items:center;margin-top:4px"><span class="src-meta">Retention:</span>%s</div>`,
-		sid, buildDateAfterOptions(""),
-		sid, sid, schedBtn, cleanBtn, deleteBtn,
-		retSelect,
+			`<div style="display:flex;gap:6px;align-items:center;margin-top:6px">`+
+			`<span class="src-meta" style="font-size:11px">Retention:</span>`+
+			`%s`+
+			`<button class="btn-sm btn-gray" title="Delete old downloaded media based on retention" onclick="cleanupSource('%s')">Clean up</button>`+
+			` <button class="btn-sm btn-orange" title="Remove this source and all its media" onclick="deleteSource(this,'%s')">Remove</button>`+
+			`</div>`,
+		sid, buildDateAfterOptions(dateAfter),
+		sid, sid,
+		schedBtn,
+		buildRetentionSelect(sourceID, retentionDays),
+		sid, sid,
 	)
 }
 
@@ -278,7 +279,11 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			html.EscapeString(s.ID),
 			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
 			pct, doneCount, mediaCount,
-			buildActionsCell(s.ID, s.Kind, func() bool { _, ok := schedBySource[s.ID]; return ok }(), s.RetentionDays),
+			buildActionsCell(s.ID, s.Kind,
+				func() bool { _, ok := schedBySource[s.ID]; return ok }(),
+				s.RetentionDays,
+				func() string { if sc, ok := schedBySource[s.ID]; ok { return sc.DateAfter }; return "" }(),
+			),
 		))
 	}
 	if len(sourceRows) == 0 {
@@ -360,11 +365,11 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		mediaRows = append(mediaRows, fmt.Sprintf(
-			`<div class="media-row" data-source="%s">`+
+			`<div class="media-row" data-source="%s" data-status="%s">`+
 				`<div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div>`+
 				`<div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s &middot; %s</span></div>`+
 				`<div class="row-actions">%s</div></div>`,
-			html.EscapeString(m.SourceID),
+			html.EscapeString(m.SourceID), html.EscapeString(string(m.Status)),
 			html.EscapeString(m.VideoID), stClass, stIcon,
 			html.EscapeString(m.Title), html.EscapeString(m.Title),
 			html.EscapeString(dur), statusBadge(string(m.Status)),
@@ -439,7 +444,8 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
-			`<tr><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td class="row-actions">%s</td></tr>`,
+			`<tr data-status="%s"><td>%s</td><td title="%s">%s</td><td>%s</td><td class="src-meta">%s</td><td class="row-actions">%s</td></tr>`,
+			html.EscapeString(string(t.Status)),
 			html.EscapeString(typeLabel),
 			html.EscapeString(entityName), html.EscapeString(entityName),
 			statusCell,
@@ -529,10 +535,18 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 	}
 	autoRefreshJS := ""
 	if hasRunning {
-		autoRefreshJS = `(function poll(){
-  const tab=location.hash.slice(1);
-  if(tab==='settings'||tab==='cookies'||tab==='new')return;
-  setTimeout(()=>location.reload(),5000);
+		autoRefreshJS = `(function quietPoll(){
+  function poll(){
+    const tab=location.hash.slice(1);
+    if(tab==='settings'||tab==='cookies'||tab==='new')return setTimeout(poll,5000);
+    fetch('/api/v1/tasks').then(r=>r.json()).then(d=>{
+      let stillRunning=false;
+      (d.items||[]).forEach(t=>{if(t.status==='running'||t.status==='queued')stillRunning=true;});
+      if(!stillRunning){location.reload();return;}
+      setTimeout(poll,5000);
+    }).catch(()=>setTimeout(poll,5000));
+  }
+  setTimeout(poll,5000);
 })();`
 	}
 
@@ -804,14 +818,22 @@ tr:hover .row-actions{opacity:1}
       </label>
     </div>
     <div id="new-sched-wrap" style="display:none;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Schedule (optional)</div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">Options</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
           <input type="checkbox" id="new-sched-enabled" style="width:auto;margin:0"> Enable recurring scan
         </label>
-        <select id="new-sched-interval" style="width:auto;padding:4px 8px;font-size:12px">
+        <select id="new-sched-interval" style="width:auto;padding:4px 8px;font-size:12px" title="How often to scan for new videos">
           <option value="6">Every 6h</option><option value="12">Every 12h</option>
           <option value="24" selected>Every 24h</option><option value="168">Every week</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="src-meta" style="font-size:12px">Retention:</span>
+        <select id="new-retention" style="width:auto;padding:4px 8px;font-size:12px" title="Auto-delete downloaded media older than this">
+          <option value="0">Default</option><option value="30">30 days</option><option value="60">60 days</option>
+          <option value="90">90 days</option><option value="180">180 days</option><option value="365">1 year</option>
+          <option value="-1">Keep forever</option>
         </select>
       </div>
     </div>
@@ -834,11 +856,15 @@ tr:hover .row-actions{opacity:1}
     <div class="card-header">
       <span class="card-title">Media Items (%d)</span>
       <div class="filter-bar">
-        <button class="btn-sm btn-green" onclick="withLoading(this,downloadAllPending)">Download All Pending</button>
-        <button class="btn-sm btn-gray" onclick="cleanupFiltered()">Clean up</button>
-        <span class="src-meta">Filter:</span>
+        <button class="btn-sm btn-green" title="Start downloading all pending media" onclick="withLoading(this,downloadAllPending)">Download All Pending</button>
+        <span class="src-meta">Source:</span>
         <select id="media-filter" onchange="filterMedia(this.value)">
           <option value="">All sources</option>%s
+        </select>
+        <span class="src-meta">Status:</span>
+        <select id="media-status-filter" onchange="filterMediaStatus(this.value)">
+          <option value="">All</option><option value="pending">Pending</option><option value="downloading">Downloading</option>
+          <option value="done">Done</option><option value="failed">Failed</option><option value="missing">Missing</option>
         </select>
       </div>
     </div>
@@ -850,7 +876,7 @@ tr:hover .row-actions{opacity:1}
 <div id="tab-tasks" class="tab-content">
   <h1 class="page-title">Tasks</h1>
   <div class="card">
-    <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><button class="btn-sm btn-orange" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
+    <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><select id="task-status-filter" onchange="filterTaskStatus(this.value)" style="font-size:12px;padding:3px 6px;width:auto"><option value="">All</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select> <button class="btn-sm btn-orange" title="Cancel all running tasks" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" title="Retry all failed download tasks" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" title="Remove all succeeded and failed tasks" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Entity</th><th>Status</th><th>Created</th><th></th></tr></thead>
       <tbody id="tasks-tbody">%s</tbody>
@@ -1120,14 +1146,24 @@ async function submitForm(){
       if(data.task?.id){
         await fetch('/api/v1/tasks/'+data.task.id+'/start',{method:'POST'}).catch(()=>{});
       }
-      // Create schedule if enabled (channel/playlist only)
-      const schedEnabled=document.getElementById('new-sched-enabled');
-      if(schedEnabled&&schedEnabled.checked&&kind!=='video'&&data.source?.id){
-        const interval=parseInt(document.getElementById('new-sched-interval').value)||24;
-        await fetch('/api/v1/sources/'+data.source.id+'/schedule',{
-          method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({intervalHours:interval,enabled:true,autoDownload:true,dateAfter:dateAfter})
-        }).catch(()=>{});
+      // Set retention and create schedule if enabled (channel/playlist only)
+      if(kind!=='video'&&data.source?.id){
+        const retEl=document.getElementById('new-retention');
+        const retDays=retEl?parseInt(retEl.value):0;
+        if(retDays!==0){
+          await fetch('/api/v1/sources/'+data.source.id+'/retention',{
+            method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({retentionDays:retDays})
+          }).catch(()=>{});
+        }
+        const schedEnabled=document.getElementById('new-sched-enabled');
+        if(schedEnabled&&schedEnabled.checked){
+          const interval=parseInt(document.getElementById('new-sched-interval').value)||24;
+          await fetch('/api/v1/sources/'+data.source.id+'/schedule',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({intervalHours:interval,enabled:true,autoDownload:true,dateAfter:dateAfter})
+          }).catch(()=>{});
+        }
       }
       toast('Source added — indexing now…','ok');
       setTimeout(()=>{location.hash='sources';location.reload();},400);
@@ -1242,11 +1278,30 @@ function removeSchedule(btn,sourceId){
 }
 function filterMedia(sourceId){
   sessionStorage.setItem('mediaFilter',sourceId);
+  applyMediaFilters();
+}
+function filterMediaStatus(status){
+  sessionStorage.setItem('mediaStatusFilter',status);
+  applyMediaFilters();
+}
+function applyMediaFilters(){
+  const src=sessionStorage.getItem('mediaFilter')||'';
+  const st=sessionStorage.getItem('mediaStatusFilter')||'';
   if(window.pagers&&window.pagers['media-tbody']){
-    window.pagers['media-tbody'].setFilter(tr=>sourceId===''||tr.dataset.source===sourceId);
+    window.pagers['media-tbody'].setFilter(el=>(src===''||el.dataset.source===src)&&(st===''||el.dataset.status===st));
   }else{
-    document.querySelectorAll('#media-tbody [data-source]').forEach(tr=>{
-      tr.style.display=(sourceId===''||tr.dataset.source===sourceId)?'':'none';
+    document.querySelectorAll('#media-tbody [data-source]').forEach(el=>{
+      el.style.display=((src===''||el.dataset.source===src)&&(st===''||el.dataset.status===st))?'':'none';
+    });
+  }
+}
+function filterTaskStatus(status){
+  sessionStorage.setItem('taskStatusFilter',status);
+  if(window.pagers&&window.pagers['tasks-tbody']){
+    window.pagers['tasks-tbody'].setFilter(tr=>status===''||tr.dataset.status===status);
+  }else{
+    document.querySelectorAll('#tasks-tbody tr[data-status]').forEach(tr=>{
+      tr.style.display=(status===''||tr.dataset.status===status)?'':'none';
     });
   }
 }
@@ -1528,9 +1583,14 @@ window.onload=function(){
   initPager('media-tbody','pager-media',20);
   initPager('tasks-tbody','pager-tasks',20);
   initPager('schedules-tbody','pager-schedules',20);
-  // Restore media filter
+  // Restore filters
   const mf=sessionStorage.getItem('mediaFilter');
-  if(mf){const el=document.getElementById('media-filter');if(el){el.value=mf;filterMedia(mf);}}
+  if(mf){const el=document.getElementById('media-filter');if(el){el.value=mf;}}
+  const msf=sessionStorage.getItem('mediaStatusFilter');
+  if(msf){const el=document.getElementById('media-status-filter');if(el){el.value=msf;}}
+  if(mf||msf)applyMediaFilters();
+  const tsf=sessionStorage.getItem('taskStatusFilter');
+  if(tsf){const el=document.getElementById('task-status-filter');if(el){el.value=tsf;filterTaskStatus(tsf);}}
   %s
 };
 window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY);};
