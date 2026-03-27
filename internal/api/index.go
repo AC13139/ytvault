@@ -559,6 +559,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
+*{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+html{-webkit-text-size-adjust:100%%;text-size-adjust:100%%}
+input,select,textarea,button{font-family:inherit}
 /* ── Theme variables ── */
 :root,[data-theme="dark"]{
   --bg:#020617;--bg-mesh1:rgba(59,130,246,0.06);--bg-mesh2:rgba(124,58,237,0.04);
@@ -625,7 +628,7 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .tab-content{display:none}.tab-content.active{display:block}
 /* ── Glass cards ── */
 .card{background:var(--surface-glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:16px;padding:22px;margin-bottom:20px;box-shadow:var(--card-shadow);transition:background 0.3s,border-color 0.3s}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px 12px}
 .card-title{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-0.2px}
 /* ── Forms ── */
 .form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:12px;align-items:end}
@@ -743,8 +746,8 @@ tr:hover .row-actions{opacity:1}
 .media-row:hover{background:var(--surface-hover)}
 .media-row:hover .row-actions{opacity:1}
 .media-row .row-actions{opacity:0.3;transition:opacity 0.2s;display:flex;gap:6px;align-items:center;flex-shrink:0}
-.filter-bar{display:flex;align-items:center;gap:8px}
-.filter-bar select{width:auto}
+.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filter-bar select{width:auto;min-width:0;flex-shrink:1}
 /* ── Toast ── */
 #toast{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast-msg{background:var(--surface-glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-size:13px;max-width:360px;border-left:3px solid var(--primary);pointer-events:auto;animation:tslide .25s ease;box-shadow:var(--card-shadow);color:var(--text)}
@@ -760,7 +763,50 @@ tr:hover .row-actions{opacity:1}
 .pager button:hover:not(:disabled){color:var(--text)}
 .pager button:disabled{opacity:0.3;cursor:default}
 /* ── Responsive ── */
-@media(max-width:768px){.sidebar{width:56px}.sidebar .nav-label,.sidebar-label,.logo-text,.nav-tab .count,.sidebar-toggle,.status-dot,.theme-toggle{display:none}.sidebar-logo{padding:16px 12px;text-align:center}.main{margin-left:56px;padding:16px}.form-row,.form-row-3{grid-template-columns:1fr}.page-title{font-size:18px}.thumb-wrap{width:80px;min-width:80px}}
+/* ── Tablet (<=1024px) ── */
+@media(max-width:1024px){
+  .main{padding:20px 16px}
+  .input-container{max-width:100%%}
+  .card{padding:16px}
+  .source-card{padding:16px}
+  td{max-width:200px}
+}
+/* ── Phone (<=768px) ── */
+@media(max-width:768px){
+  .sidebar{width:56px}
+  .sidebar .nav-label,.sidebar-label,.logo-text,.nav-tab .count,.sidebar-toggle,.status-dot,.theme-toggle{display:none}
+  .sidebar-logo{padding:14px 10px;text-align:center}
+  .main{margin-left:56px;padding:12px}
+  .page-title{font-size:18px;margin-bottom:14px}
+  .card{padding:14px;border-radius:12px;margin-bottom:14px}
+  .card-header{flex-direction:column;align-items:flex-start;gap:8px}
+  .filter-bar{width:100%%;flex-wrap:wrap}
+  .filter-bar select{flex:1;min-width:80px}
+  .filter-bar .src-meta{font-size:11px}
+  .form-row,.form-row-3{grid-template-columns:1fr}
+  .source-card{padding:14px}
+  .source-card .source-header{flex-wrap:wrap}
+  .source-card .card-actions{opacity:1;transform:none}
+  .media-row{flex-wrap:wrap;gap:10px}
+  .thumb-wrap{width:100%%;min-width:0;max-width:200px}
+  .media-row .row-actions{opacity:1;width:100%%}
+  .table-wrap{font-size:12px}
+  td{max-width:150px;padding:8px 6px}
+  th{padding:8px 6px;font-size:10px}
+  .pager{flex-wrap:wrap;justify-content:center}
+  .btn-primary{padding:8px 14px;font-size:12px}
+  .btn-sm{font-size:11px;padding:3px 8px}
+}
+/* ── Small phone (<=480px) ── */
+@media(max-width:480px){
+  .sidebar{width:0;border:none}
+  .sidebar.show-mobile{width:220px;position:fixed;z-index:300}
+  .main{margin-left:0;padding:10px}
+  .page-title{font-size:16px}
+  .card{padding:12px;border-radius:10px}
+  .thumb-wrap{max-width:160px}
+  .media-info .m-title{font-size:13px}
+}
 </style>
 </head>
 <body>
@@ -856,7 +902,7 @@ tr:hover .row-actions{opacity:1}
     <div class="card-header">
       <span class="card-title">Media Items (%d)</span>
       <div class="filter-bar">
-        <button class="btn-sm btn-green" title="Start downloading all pending media" onclick="withLoading(this,downloadAllPending)">Download All Pending</button>
+        <button class="btn-sm btn-green" title="Download all filtered media (pending, missing, and failed)" onclick="withLoading(this,downloadAll)">Download All</button>
         <span class="src-meta">Source:</span>
         <select id="media-filter" onchange="filterMedia(this.value)">
           <option value="">All sources</option>%s
@@ -876,7 +922,7 @@ tr:hover .row-actions{opacity:1}
 <div id="tab-tasks" class="tab-content">
   <h1 class="page-title">Tasks</h1>
   <div class="card">
-    <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px"><select id="task-status-filter" onchange="filterTaskStatus(this.value)" style="font-size:12px;padding:3px 6px;width:auto"><option value="">All</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select> <button class="btn-sm btn-orange" title="Cancel all running tasks" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" title="Retry all failed download tasks" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" title="Remove all succeeded and failed tasks" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
+    <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px;flex-wrap:wrap"><select id="task-status-filter" onchange="filterTaskStatus(this.value)" style="font-size:12px;padding:3px 6px;width:auto"><option value="">All</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select> <button class="btn-sm btn-orange" title="Cancel all running tasks" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" title="Retry all failed download tasks" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" title="Remove all succeeded and failed tasks" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Type</th><th>Entity</th><th>Status</th><th>Created</th><th></th></tr></thead>
       <tbody id="tasks-tbody">%s</tbody>
@@ -1338,14 +1384,14 @@ async function downloadMedia(mediaId){
   if(res.ok||res.status===202){toast('Download started','ok');setTimeout(()=>location.reload(),400);}
   else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
-async function downloadAllPending(){
+async function downloadAll(){
   const filter=sessionStorage.getItem('mediaFilter')||'';
   const qs=filter?'?source='+encodeURIComponent(filter):'';
   const res=await fetch('/api/v1/media/download-all-pending'+qs,{method:'POST'});
   const data=await res.json();
   if(res.ok||res.status===202){
     toast('Started '+(data.started||0)+' of '+(data.total||0)+' download(s)','ok');
-    if(data.total>0)setTimeout(()=>location.reload(),400);
+    if(data.total>0)setTimeout(()=>location.reload(),1000);
   }else{toast('Failed','err');}
 }
 async function retryTask(taskId){

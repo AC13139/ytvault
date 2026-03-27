@@ -464,11 +464,24 @@ func (a *App) handleDownloadMedia(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleDownloadAllPending(w http.ResponseWriter, r *http.Request) {
-	// Optional source filter
 	sourceFilter := r.URL.Query().Get("source")
 	sources := a.store.ListSources()
 	started := 0
 	total := 0
+
+	// First: retry all failed/missing media items (reset to pending)
+	for _, src := range sources {
+		if sourceFilter != "" && src.ID != sourceFilter {
+			continue
+		}
+		for _, m := range a.store.ListMediaItemsBySource(src.ID) {
+			if m.Status == models.MediaItemStatusFailed || m.Status == models.MediaItemStatusMissing {
+				_ = a.store.RetryMediaItem(m.ID)
+			}
+		}
+	}
+
+	// Then: create download tasks for all pending items
 	for _, src := range sources {
 		if sourceFilter != "" && src.ID != sourceFilter {
 			continue
