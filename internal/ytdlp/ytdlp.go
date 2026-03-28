@@ -104,7 +104,7 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 	}
 
 	if dateAfter != "" {
-		return indexWithDateFilter(indexURL, dateAfter)
+		return indexFlatWithLimit(indexURL, dateAfter)
 	}
 	return indexFlat(indexURL)
 }
@@ -207,6 +207,87 @@ func Search(query string, limit int) ([]SearchResult, error) {
 		})
 	}
 	return results, nil
+}
+
+// dateFilterToLimit maps a yt-dlp dateAfter value to a max video count.
+// YouTube lists newest first, so limiting to N videos approximates "last X days".
+func dateFilterToLimit(dateAfter string) int {
+	switch dateAfter {
+	case "now-1days":
+		return 5
+	case "now-3days":
+		return 10
+	case "now-7days":
+		return 20
+	case "now-14days":
+		return 40
+	case "now-30days":
+		return 60
+	case "now-90days":
+		return 150
+	case "now-365days":
+		return 400
+	case "now-730days":
+		return 800
+	default:
+		return 200 // safe default
+	}
+}
+
+// indexFlatWithLimit uses --flat-playlist (fast, reliable) with --playlist-items
+// to limit by recency. Since full extraction (--print-json) is unreliable in
+// Docker environments, we use flat mode and approximate date filtering by
+// video count (YouTube lists newest first).
+func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
+	limit := dateFilterToLimit(dateAfter)
+	args := append(baseArgs(),
+		"--flat-playlist", "-J", "--no-warnings",
+		"--playlist-items", fmt.Sprintf("1:%d", limit),
+		url,
+	)
+	cmd := exec.Command("yt-dlp", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return "", nil, fmt.Errorf("yt-dlp exec: %w", err)
+	}
+
+	var root probeResult
+	if err := json.Unmarshal(out, &root); err != nil {
+		return "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
+	}
+
+	name := root.channelName()
+	if name == "" {
+		name = root.Title
+	}
+
+	if len(root.Entries) == 0 {
+		return name, []VideoInfo{{
+			ID: root.ID, Title: root.Title, URL: root.videoURL(), Duration: root.duration(), UploadDate: root.RawUploadDate,
+		}}, nil
+	}
+
+	videos := make([]VideoInfo, 0, len(root.Entries))
+	var flatten func(entries []probeResult)
+	flatten = func(entries []probeResult) {
+		for _, e := range entries {
+			if e.ID == "" {
+				continue
+			}
+			if len(e.Entries) > 0 {
+				flatten(e.Entries)
+				continue
+			}
+			videos = append(videos, VideoInfo{
+				ID: e.ID, Title: e.Title, URL: e.videoURL(), Duration: e.duration(), UploadDate: e.RawUploadDate,
+			})
+		}
+	}
+	flatten(root.Entries)
+	return name, videos, nil
 }
 
 // indexWithDateFilter uses --dump-json (per-line JSON, full extraction) with
