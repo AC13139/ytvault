@@ -474,6 +474,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			if strings.Contains(t.ErrorMessage, "Sign in to confirm") {
 				statusCell += ` <a href="#cookies" onclick="showTab('cookies')" style="color:#60a5fa;font-size:11px">→ Cookies</a>`
 			}
+			if strings.Contains(t.ErrorMessage, "verify your age") || strings.Contains(t.ErrorMessage, "age") {
+				statusCell += ` <span class="src-meta" style="font-size:11px" title="Verify your age at myaccount.google.com/birthday, then re-export cookies">age-restricted</span>`
+			}
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
