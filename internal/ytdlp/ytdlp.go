@@ -124,6 +124,13 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 		}}, nil
 	}
 
+	// Use channel/uploader name (clean) instead of root.Title which may have
+	// suffixes like " - Videos" for channel tabs
+	name := root.channelName()
+	if name == "" {
+		name = root.Title
+	}
+
 	videos := make([]VideoInfo, 0, len(root.Entries))
 	var flatten func(entries []probeResult)
 	flatten = func(entries []probeResult) {
@@ -141,7 +148,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 		}
 	}
 	flatten(root.Entries)
-	return root.Title, videos, nil
+	return name, videos, nil
 }
 
 // SearchResult represents a single YouTube search result.
@@ -237,8 +244,11 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 			continue
 		}
 		if channelTitle == "" {
-			// Extract channel/uploader from first result
-			channelTitle = entry.Title // will be overwritten by channel-level data if present
+			// Use channel/uploader name (clean) from the first result
+			channelTitle = entry.channelName()
+			if channelTitle == "" {
+				channelTitle = entry.Title
+			}
 		}
 		videos = append(videos, VideoInfo{
 			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Duration: entry.duration(), UploadDate: entry.RawUploadDate,

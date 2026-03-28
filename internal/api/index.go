@@ -364,15 +364,41 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			stClass = "st-missing"; stIcon = "?"
 		}
 
+		// Build metadata line: duration, file size, upload date, download date
+		metaParts := []string{dur}
+		if m.FileSize > 0 {
+			if m.FileSize >= 1<<30 {
+				metaParts = append(metaParts, fmt.Sprintf("%.1f GB", float64(m.FileSize)/float64(1<<30)))
+			} else if m.FileSize >= 1<<20 {
+				metaParts = append(metaParts, fmt.Sprintf("%.1f MB", float64(m.FileSize)/float64(1<<20)))
+			} else {
+				metaParts = append(metaParts, fmt.Sprintf("%.0f KB", float64(m.FileSize)/1024))
+			}
+		}
+		if m.UploadDate != nil {
+			metaParts = append(metaParts, "uploaded "+m.UploadDate.Format("2006-01-02"))
+		}
+		if m.Status == models.MediaItemStatusDone && !m.UpdatedAt.IsZero() {
+			metaParts = append(metaParts, "downloaded "+m.UpdatedAt.Format("2006-01-02"))
+		}
+		metaLine := html.EscapeString(strings.Join(metaParts, " · "))
+
+		// File path tooltip with copy-on-click
+		filePathAttr := ""
+		if m.FilePath != "" {
+			filePathAttr = fmt.Sprintf(` data-filepath="%s" title="%s — click to copy path" onclick="copyPath(this)" style="cursor:pointer"`,
+				html.EscapeString(m.FilePath), html.EscapeString(m.FilePath))
+		}
+
 		mediaRows = append(mediaRows, fmt.Sprintf(
 			`<div class="media-row" data-source="%s" data-status="%s">`+
 				`<div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div>`+
-				`<div class="media-info"><span class="m-title" title="%s">%s</span><span class="m-sub">%s &middot; %s</span></div>`+
+				`<div class="media-info"%s><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span><span class="m-sub">%s</span></div>`+
 				`<div class="row-actions">%s</div></div>`,
 			html.EscapeString(m.SourceID), html.EscapeString(string(m.Status)),
 			html.EscapeString(m.VideoID), stClass, stIcon,
-			html.EscapeString(m.Title), html.EscapeString(m.Title),
-			html.EscapeString(dur), statusBadge(string(m.Status)),
+			filePathAttr, html.EscapeString(m.Title), html.EscapeString(m.Title),
+			metaLine, statusBadge(string(m.Status)),
 			action,
 		))
 	}
@@ -439,8 +465,15 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		statusCell := statusBadge(string(t.Status))
-		if t.Status == models.TaskStatusFailed && strings.Contains(t.ErrorMessage, "Sign in to confirm") {
-			statusCell += ` <a href="#cookies" onclick="showTab('cookies')" style="color:#60a5fa;font-size:11px">→ Check Cookies</a>`
+		if t.Status == models.TaskStatusFailed {
+			errMsg := html.EscapeString(t.ErrorMessage)
+			statusCell += fmt.Sprintf(
+				` <span title="%s — click to copy" style="cursor:pointer;font-size:11px;color:var(--danger-text);text-decoration:underline dotted" onclick="copyText(this.title.split(' — ')[0])">details</span>`,
+				errMsg,
+			)
+			if strings.Contains(t.ErrorMessage, "Sign in to confirm") {
+				statusCell += ` <a href="#cookies" onclick="showTab('cookies')" style="color:#60a5fa;font-size:11px">→ Cookies</a>`
+			}
 		}
 		createdAt := t.CreatedAt.UTC().Format("2006-01-02 15:04")
 		taskRows = append(taskRows, fmt.Sprintf(
@@ -1166,6 +1199,20 @@ async function searchYT(){
       '<div class="media-info"><span class="m-title" title="'+r.title.replace(/"/g,'&amp;quot;')+'">'+r.title+'</span><span class="m-sub">'+(r.channel||'—')+' &middot; '+dur+'</span></div>'+
       '<button class="btn-sm btn-blue" onclick="selectResult(\''+r.url.replace(/'/g,"\\'")+'\')">Select</button>';
     tbody.appendChild(d);
+  });
+}
+function copyPath(el){
+  const fp=el.dataset.filepath;
+  if(!fp)return;
+  navigator.clipboard.writeText(fp).then(()=>toast('Path copied','ok')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=fp;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    toast('Path copied','ok');
+  });
+}
+function copyText(text){
+  navigator.clipboard.writeText(text).then(()=>toast('Copied','ok')).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    toast('Copied','ok');
   });
 }
 function selectResult(url){

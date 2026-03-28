@@ -459,7 +459,7 @@ func (s *Store) CreateMediaItems(items []models.MediaItem) (int, error) {
 
 // UpdateMediaItemStatus updates the status, optional filePath, and optional
 // errorMsg of a media item.
-func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, filePath, errorMsg string) error {
+func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, filePath, errorMsg string, fileSize int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.state.MediaItems {
@@ -467,10 +467,12 @@ func (s *Store) UpdateMediaItemStatus(id string, status models.MediaItemStatus, 
 		if item.ID != id {
 			continue
 		}
-		// Always overwrite both fields so retries never carry stale state.
 		item.Status = status
 		item.FilePath = filePath
 		item.ErrorMsg = errorMsg
+		if fileSize > 0 {
+			item.FileSize = fileSize
+		}
 		item.UpdatedAt = time.Now().UTC()
 		return s.saveLocked()
 	}

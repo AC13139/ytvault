@@ -82,6 +82,7 @@ type MediaItem struct {
 	Pinned        bool            `json:"pinned,omitempty"`        // pinned items are never auto-cleaned
 	Status     MediaItemStatus `json:"status"`
 	FilePath   string          `json:"filePath,omitempty"`
+	FileSize   int64           `json:"fileSize,omitempty"` // bytes
 	ErrorMsg   string          `json:"errorMessage,omitempty"`
 	CreatedAt  time.Time       `json:"createdAt"`
 	UpdatedAt  time.Time       `json:"updatedAt"`

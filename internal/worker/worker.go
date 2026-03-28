@@ -216,7 +216,7 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	}
 
 	log.Printf("worker: downloading %s — %s", item.VideoID, item.Title)
-	if err := w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusDownloading, "", ""); err != nil {
+	if err := w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusDownloading, "", "", 0); err != nil {
 		return err
 	}
 
@@ -226,17 +226,26 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	if src, ok := w.store.GetSource(item.SourceID); ok && src.Kind == models.SourceKindPlaylist {
 		tmpl = cfg.PlaylistTemplate
 	}
-	// Replace %(playlist_index)03d with actual stored index (yt-dlp doesn't have
-	// playlist context when downloading individual video URLs)
+	// Replace playlist-specific template vars — yt-dlp doesn't have playlist
+	// context when downloading individual video URLs
+	if src, ok := w.store.GetSource(item.SourceID); ok {
+		// Replace playlist_title with the source name (playlist or channel name)
+		tmpl = strings.Replace(tmpl, "%(playlist_title,uploader,channel,id)s", src.Title, 1)
+	}
 	if item.PlaylistIndex > 0 {
 		tmpl = strings.Replace(tmpl, "%(playlist_index)03d", fmt.Sprintf("%03d", item.PlaylistIndex), 1)
 	}
 	filePath, err := ytdlp.Download(ctx, item.URL, w.downloadDir, tmpl, cfg.VideoFormat)
 	if err != nil {
 		dlErr := fmt.Errorf("download %s: %w", item.URL, err)
-		_ = w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusFailed, "", dlErr.Error())
+		_ = w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusFailed, "", dlErr.Error(), 0)
 		return dlErr
 	}
 
-	return w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusDone, filePath, "")
+	// Get file size
+	var fileSize int64
+	if fi, err := os.Stat(filePath); err == nil {
+		fileSize = fi.Size()
+	}
+	return w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusDone, filePath, "", fileSize)
 }
