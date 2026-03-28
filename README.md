@@ -2,13 +2,26 @@
 
 Self-hosted YouTube archive system. Add channels, playlists, or individual videos — YtVault indexes them, schedules recurring scans, and downloads everything to your own storage.
 
+## Screenshots
+
+| Sources | Add New Source |
+|---------|---------------|
+| ![Sources](screenshots/sources.png) | ![Create](screenshots/create.png) |
+
+| Media Library | Settings |
+|---------------|----------|
+| ![Media](screenshots/media.png) | ![Settings](screenshots/settings.png) |
+
 ## Features
 
 - **Sources** — add YouTube channels, playlists, or single videos by URL
 - **Indexing** — scans a source with `yt-dlp` and stores all video metadata
 - **Downloading** — downloads video+audio merged to MP4 via `ffmpeg`
 - **Scheduler** — set per-source intervals (1h–1 week); auto-download newly found videos
-- **Web UI** — single-page interface with Sources / Media / Tasks / Schedules tabs
+- **Media management** — pin videos, per-source retention policies, auto-cleanup
+- **YouTube search** — search YouTube directly from the app to discover content
+- **Themes** — YouTube 2026 (dark/light) and Classic Obsidian Glass (dark/light)
+- **Web UI** — sidebar navigation, video thumbnails, responsive design
 - **REST API** — full HTTP API for scripting and automation
 - **Persistent storage** — JSON state file + download directory; survives restarts
 
