@@ -701,7 +701,8 @@ body::before{display:none}
 .status-dot.err{background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,0.5)}
 .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-subtle)}
 /* ── Theme toggle ── */
-.theme-toggle{background:var(--surface-hover);border:1px solid var(--border-subtle);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;transition:all 0.15s;width:100%%}
+.theme-toggle{background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;transition:all 0.15s;width:100%%}
+.theme-toggle:hover{background:var(--surface-hover);color:var(--text)}
 /* ── Main area ── */
 .main{margin-left:220px;padding:28px 32px;min-height:100vh;position:relative;z-index:1;transition:margin-left 0.2s}
 .sidebar.collapsed ~ .main{margin-left:56px}
@@ -904,12 +905,7 @@ tr:hover .row-actions{opacity:1}
     <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span class="nav-label">Settings</span></button>
   </div>
   <div class="sidebar-footer">
-    <select class="theme-toggle" id="theme-select" onchange="setTheme(this.value)">
-      <option value="youtube-dark">YouTube Dark</option>
-      <option value="youtube-light">YouTube Light</option>
-      <option value="classic-dark">Classic Dark</option>
-      <option value="classic-light">Classic Light</option>
-    </select>
+    <button class="theme-toggle" onclick="toggleDarkLight()" id="theme-btn">&#9790; Dark</button>
   </div>
 </aside>
 <div id="toast"></div>
@@ -1099,6 +1095,17 @@ tr:hover .row-actions{opacity:1}
 <div id="tab-settings" class="tab-content">
   <h1 class="page-title">Settings</h1>
   <div class="card">
+    <div class="card-header"><span class="card-title">Theme</span></div>
+    <div class="form-row">
+      <label>Design theme</label>
+      <select id="cfg-design-theme" onchange="setDesignTheme(this.value)">
+        <option value="youtube">YouTube 2026</option>
+        <option value="classic">Classic (Obsidian Glass)</option>
+      </select>
+    </div>
+    <p class="src-meta" style="margin-top:4px">Use the moon/sun button in the sidebar to toggle dark/light mode.</p>
+  </div>
+  <div class="card">
     <div class="card-header"><span class="card-title">Download Settings</span></div>
     <div class="form-row">
       <label>Download directory</label>
@@ -1170,16 +1177,26 @@ tr:hover .row-actions{opacity:1}
 
 </div>
 <script>
-function setTheme(theme){
-  document.documentElement.dataset.theme=theme;
-  localStorage.setItem('theme',theme);
-  // Load correct font
-  const isClassic=theme.startsWith('classic');
-  if(isClassic&&!document.querySelector('link[href*="Inter"]')){
-    const l=document.createElement('link');l.rel='stylesheet';
-    l.href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap';
-    document.head.appendChild(l);
-  }
+function getThemeKey(){
+  const design=localStorage.getItem('designTheme')||'youtube';
+  const mode=localStorage.getItem('darkMode')==='light'?'light':'dark';
+  return design+'-'+mode;
+}
+function applyTheme(){
+  const key=getThemeKey();
+  document.documentElement.dataset.theme=key;
+  const isLight=key.endsWith('-light');
+  const btn=document.getElementById('theme-btn');
+  if(btn)btn.innerHTML=isLight?'&#9790; Dark':'&#9788; Light';
+}
+function toggleDarkLight(){
+  const cur=localStorage.getItem('darkMode')==='light'?'light':'dark';
+  localStorage.setItem('darkMode',cur==='dark'?'light':'dark');
+  applyTheme();
+}
+function setDesignTheme(design){
+  localStorage.setItem('designTheme',design);
+  applyTheme();
 }
 function toggleSidebar(){
   const s=document.getElementById('sidebar');
@@ -1682,6 +1699,9 @@ function initPager(tbodyId,pagerId,defaultSize){
 }
 async function loadConfig(){
   try{
+    // Restore design theme selector
+    const dt=document.getElementById('cfg-design-theme');
+    if(dt)dt.value=localStorage.getItem('designTheme')||'youtube';
     const res=await fetch('/api/v1/config');
     const data=await res.json();
     document.getElementById('cfg-dldir').textContent=data.downloadDir||'—';
@@ -1711,10 +1731,7 @@ async function saveConfig(){
 }
 window.onload=function(){
   // Restore theme
-  const savedTheme=localStorage.getItem('theme')||'youtube-dark';
-  document.documentElement.dataset.theme=savedTheme;
-  const ts=document.getElementById('theme-select');
-  if(ts)ts.value=savedTheme;
+  applyTheme();
   if(sessionStorage.getItem('sidebarCollapsed')==='1')document.getElementById('sidebar').classList.add('collapsed');
   const h=location.hash.slice(1);
   showTab(['new','sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
