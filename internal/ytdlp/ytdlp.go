@@ -221,9 +221,13 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 		"--ignore-errors",
 		"--dateafter", dateAfter,
 		"--break-on-reject",
+		"--playlist-items", "1:100", // cap at 100 videos to avoid 20+ min indexing
 		url,
 	)
-	cmd := exec.Command("yt-dlp", args...)
+	// 5 minute timeout — full extraction is slow but shouldn't take forever
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
 	out, err := cmd.CombinedOutput()
 	// --break-on-reject causes a non-zero exit code; that's expected.
 	// Only fail if there's no output at all.
