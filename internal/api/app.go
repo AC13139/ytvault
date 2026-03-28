@@ -87,6 +87,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
 	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
+	mux.HandleFunc("GET /api/v1/youtube/probe", a.handleYouTubeProbe)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
 	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
@@ -349,6 +350,32 @@ func (a *App) handleYouTubeSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+func (a *App) handleYouTubeProbe(w http.ResponseWriter, r *http.Request) {
+	url := r.URL.Query().Get("url")
+	if url == "" {
+		writeError(w, http.StatusBadRequest, "missing_url", "url parameter required")
+		return
+	}
+	dateAfter := r.URL.Query().Get("dateAfter")
+	title, videos, err := ytdlp.Index(url, dateAfter)
+	resp := map[string]any{
+		"url":       url,
+		"dateAfter": dateAfter,
+		"title":     title,
+		"count":     len(videos),
+	}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	if len(videos) > 0 && len(videos) <= 10 {
+		resp["videos"] = videos
+	} else if len(videos) > 10 {
+		resp["videos"] = videos[:10]
+		resp["truncated"] = true
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *App) handleGetConfig(w http.ResponseWriter, _ *http.Request) {
