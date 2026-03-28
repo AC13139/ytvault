@@ -365,7 +365,11 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		// Build metadata line: duration, file size, upload date, download date
-		metaParts := []string{dur}
+		metaParts := []string{}
+		if m.Channel != "" {
+			metaParts = append(metaParts, m.Channel)
+		}
+		metaParts = append(metaParts, dur)
 		if m.FileSize > 0 {
 			if m.FileSize >= 1<<30 {
 				metaParts = append(metaParts, fmt.Sprintf("%.1f GB", float64(m.FileSize)/float64(1<<30)))

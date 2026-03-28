@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,6 +49,7 @@ type VideoInfo struct {
 	ID         string
 	Title      string
 	URL        string
+	Channel    string // channel/uploader name
 	Duration   int    // seconds
 	UploadDate string // YYYYMMDD or empty
 }
@@ -104,6 +106,17 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 	}
 
 	if dateAfter != "" {
+		// Try full extraction first (gets real upload dates).
+		// Fall back to flat+limit if it fails (Docker compat).
+		title, videos, err := indexWithDateFilter(indexURL, dateAfter)
+		if err == nil && len(videos) > 0 {
+			return title, videos, nil
+		}
+		if err != nil {
+			log.Printf("ytdlp: full extraction failed (%v), falling back to flat mode", err)
+		} else {
+			log.Printf("ytdlp: full extraction returned 0 videos, falling back to flat mode")
+		}
 		return indexFlatWithLimit(indexURL, dateAfter)
 	}
 	return indexFlat(indexURL)
@@ -128,7 +141,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 
 	if len(root.Entries) == 0 {
 		return root.Title, []VideoInfo{{
-			ID: root.ID, Title: root.Title, URL: root.videoURL(), Duration: root.duration(), UploadDate: root.RawUploadDate,
+			ID: root.ID, Title: root.Title, URL: root.videoURL(), Channel: root.channelName(), Duration: root.duration(), UploadDate: root.RawUploadDate,
 		}}, nil
 	}
 
@@ -151,7 +164,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 				continue
 			}
 			videos = append(videos, VideoInfo{
-				ID: e.ID, Title: e.Title, URL: e.videoURL(), Duration: e.duration(), UploadDate: e.RawUploadDate,
+				ID: e.ID, Title: e.Title, URL: e.videoURL(), Channel: e.channelName(), Duration: e.duration(), UploadDate: e.RawUploadDate,
 			})
 		}
 	}
@@ -211,26 +224,28 @@ func Search(query string, limit int) ([]SearchResult, error) {
 
 // dateFilterToLimit maps a yt-dlp dateAfter value to a max video count.
 // YouTube lists newest first, so limiting to N videos approximates "last X days".
+// dateFilterToLimit maps date ranges to video counts for flat mode fallback.
+// Assumes ~1-2 videos per week for most channels.
 func dateFilterToLimit(dateAfter string) int {
 	switch dateAfter {
 	case "now-1days":
-		return 5
+		return 3
 	case "now-3days":
-		return 10
+		return 5
 	case "now-7days":
-		return 20
+		return 10
 	case "now-14days":
-		return 40
+		return 15
 	case "now-30days":
-		return 60
+		return 20
 	case "now-90days":
-		return 150
+		return 50
 	case "now-365days":
-		return 400
+		return 120
 	case "now-730days":
-		return 800
+		return 250
 	default:
-		return 200 // safe default
+		return 50
 	}
 }
 
@@ -266,7 +281,7 @@ func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
 
 	if len(root.Entries) == 0 {
 		return name, []VideoInfo{{
-			ID: root.ID, Title: root.Title, URL: root.videoURL(), Duration: root.duration(), UploadDate: root.RawUploadDate,
+			ID: root.ID, Title: root.Title, URL: root.videoURL(), Channel: root.channelName(), Duration: root.duration(), UploadDate: root.RawUploadDate,
 		}}, nil
 	}
 
@@ -282,7 +297,7 @@ func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
 				continue
 			}
 			videos = append(videos, VideoInfo{
-				ID: e.ID, Title: e.Title, URL: e.videoURL(), Duration: e.duration(), UploadDate: e.RawUploadDate,
+				ID: e.ID, Title: e.Title, URL: e.videoURL(), Channel: e.channelName(), Duration: e.duration(), UploadDate: e.RawUploadDate,
 			})
 		}
 	}
@@ -345,7 +360,7 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 			}
 		}
 		videos = append(videos, VideoInfo{
-			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Duration: entry.duration(), UploadDate: entry.RawUploadDate,
+			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Channel: entry.channelName(), Duration: entry.duration(), UploadDate: entry.RawUploadDate,
 		})
 	}
 	return channelTitle, videos, nil

@@ -75,6 +75,7 @@ type MediaItem struct {
 	SourceID      string          `json:"sourceId"`
 	VideoID       string          `json:"videoId"`
 	Title         string          `json:"title"`
+	Channel       string          `json:"channel,omitempty"` // channel/uploader name
 	URL           string          `json:"url"`
 	Duration      int             `json:"duration,omitempty"`
 	PlaylistIndex int             `json:"playlistIndex,omitempty"` // 1-based index within playlist

@@ -162,6 +162,7 @@ func (w *Worker) runIndex(task models.Task) error {
 			SourceID:      src.ID,
 			VideoID:       v.ID,
 			Title:         v.Title,
+			Channel:       v.Channel,
 			URL:           v.URL,
 			Duration:      v.Duration,
 			PlaylistIndex: i + 1, // 1-based
