@@ -893,7 +893,6 @@ tr:hover .row-actions{opacity:1}
   <div class="sidebar-logo"><span class="logo-text"><span class="logo-icon">&#9654;</span>Yt<b>Vault</b></span><button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button></div>
   <div class="sidebar-section">
     <div class="sidebar-label">Main</div>
-    <button class="nav-tab" id="tab-btn-new" onclick="showTab('new')"><span class="icon">+</span> <span class="nav-label">New Source</span></button>
     <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span class="nav-label">Sources</span> <span class="count">%d</span></button>
     <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span class="nav-label">Media</span> <span class="count">%d</span></button>
     <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span class="nav-label">Tasks</span> <span class="count">%d</span></button>
@@ -911,8 +910,12 @@ tr:hover .row-actions{opacity:1}
 <div id="toast"></div>
 <div class="main">
 
+<span id="tab-btn-new" style="display:none"></span>
 <div id="tab-new" class="tab-content">
-  <h1 class="page-title">Add New Source</h1>
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+    <button class="btn-sm btn-gray" onclick="showTab('sources')" title="Back to Sources">&#8592; Back</button>
+    <h1 class="page-title" style="margin-bottom:0">Add New Source</h1>
+  </div>
   <div class="card">
     <div class="card-header"><span class="card-title">Search YouTube</span></div>
     <div class="input-container" style="display:flex;gap:8px;margin-bottom:12px">
@@ -970,7 +973,10 @@ tr:hover .row-actions{opacity:1}
 </div>
 
 <div id="tab-sources" class="tab-content">
-  <h1 class="page-title">Sources <span style="font-size:14px;color:#475569;font-weight:400">(%d)</span></h1>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+    <h1 class="page-title" style="margin-bottom:0">Sources <span style="font-size:14px;color:var(--text-muted);font-weight:400">(%d)</span></h1>
+    <button class="btn-primary" onclick="showTab('new')">+ Create</button>
+  </div>
   <div id="sources-list">%s</div>
   <div class="pager" id="pager-sources"></div>
 </div>
