@@ -26,9 +26,14 @@ func cookiesPath() string {
 	return p
 }
 
-// baseArgs returns common yt-dlp arguments (JS runtime, cookies).
+// baseArgs returns common yt-dlp arguments (JS runtime, cookies, player client).
 func baseArgs() []string {
-	args := []string{"--js-runtimes", "node"}
+	args := []string{
+		"--js-runtimes", "node",
+		// Force web player client — required for age-restricted videos with cookies.
+		// Default clients (android_vr, web_safari) reject browser cookies for age-gated content.
+		"--extractor-args", "youtube:player_client=web",
+	}
 	if cp := cookiesPath(); cp != "" {
 		args = append(args, "--cookies", cp)
 	}
