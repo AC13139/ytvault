@@ -541,23 +541,21 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		actions := fmt.Sprintf(
 			`<div style="display:flex;gap:4px;flex-wrap:wrap">`+
 				`<button class="btn-sm %s" onclick="withLoading(this,()=>toggleSchedule('%s',%v))">%s</button>`+
-				` <button class="btn-sm btn-blue" onclick="withLoading(this,()=>saveSchedule('%s'))">Save</button>`+
 				` <button class="btn-sm btn-orange" onclick="removeSchedule(this,'%s')">Remove</button>`+
 				`</div>`,
 			enableClass, sid, !sched.Enabled, enableLabel,
 			sid,
-			sid,
 		)
 		schedRows = append(schedRows, fmt.Sprintf(
 			`<tr><td title="%s">%s</td>`+
-				`<td><select id="sched-iv-%s" style="width:auto;padding:3px;font-size:12px">%s</select></td>`+
-				`<td><select id="sched-da-%s" style="width:auto;padding:3px;font-size:12px">%s</select></td>`+
-				`<td><input type="checkbox" id="sched-ad-%s"%s style="width:auto;margin:0"></td>`+
+				`<td><select id="sched-iv-%s" style="width:auto;padding:3px;font-size:12px" onchange="autoSaveSchedule('%s')">%s</select></td>`+
+				`<td><select id="sched-da-%s" style="width:auto;padding:3px;font-size:12px" onchange="autoSaveSchedule('%s')">%s</select></td>`+
+				`<td><input type="checkbox" id="sched-ad-%s"%s style="width:auto;margin:0" onchange="autoSaveSchedule('%s')"></td>`+
 				`<td>%s</td><td class="src-meta">%s</td><td class="src-meta">%s</td><td>%s</td></tr>`,
 			html.EscapeString(srcTitle), html.EscapeString(srcTitle),
-			sid, buildIntervalOptions(sched.IntervalHours),
-			sid, buildDateAfterOptions(sched.DateAfter),
-			sid, autoDLChecked,
+			sid, sid, buildIntervalOptions(sched.IntervalHours),
+			sid, sid, buildDateAfterOptions(sched.DateAfter),
+			sid, autoDLChecked, sid,
 			state, lastRun, nextRun, actions,
 		))
 	}
@@ -1394,6 +1392,15 @@ async function toggleSchedule(sourceId,enabled){
   const body={intervalHours:parseInt(iv?.value||24),enabled:enabled,autoDownload:ad?.checked||false,dateAfter:da?.value||''};
   const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(res.ok){toast(enabled?'Schedule started':'Schedule paused','ok');setTimeout(()=>location.reload(),300);}
+  else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
+}
+async function autoSaveSchedule(sourceId){
+  const iv=document.getElementById('sched-iv-'+sourceId);
+  const da=document.getElementById('sched-da-'+sourceId);
+  const ad=document.getElementById('sched-ad-'+sourceId);
+  const body={intervalHours:parseInt(iv?.value||24),enabled:true,autoDownload:ad?.checked||false,dateAfter:da?.value||''};
+  const res=await fetch('/api/v1/sources/'+sourceId+'/schedule',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){toast('Schedule updated','ok');}
   else{const d=await res.json();toast('Failed: '+(d.error?.message||''),'err');}
 }
 async function saveSchedule(sourceId){
