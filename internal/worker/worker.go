@@ -75,10 +75,13 @@ func (w *Worker) execute(ctx context.Context, task models.Task) {
 	switch task.Type {
 	case "index":
 		// Mark running immediately for index tasks
-		if _, err := w.store.MarkTaskRunning(task.ID); err != nil {
+		updated, err := w.store.MarkTaskRunning(task.ID)
+		if err != nil {
 			log.Printf("worker: mark running %s: %v", task.ID, err)
+			execErr = err
+		} else {
+			execErr = w.runIndex(updated)
 		}
-		execErr = w.runIndex(task)
 	case "download":
 		// Respect max concurrent downloads — stay queued until slot available
 		maxC := w.store.GetConfig().MaxConcurrent
@@ -173,8 +176,8 @@ func (w *Worker) runIndex(task models.Task) error {
 	}
 	log.Printf("worker: created %d new media item(s) for source %s", created, src.ID)
 
-	// When AutoDownload is set (scheduler-triggered), immediately queue and start
-	// download tasks for any newly found (pending) videos.
+	// Auto-download: immediately queue and start downloads for new videos.
+	log.Printf("worker: source %s autoDownload=%v created=%d", src.ID, task.AutoDownload, created)
 	if task.AutoDownload && created > 0 {
 		dlTasks, err := w.store.CreateDownloadTasksForSource(src.ID)
 		if err != nil {
