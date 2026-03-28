@@ -596,16 +596,15 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>YtVault</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 *{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 html{-webkit-text-size-adjust:100%%;text-size-adjust:100%%}
 input,select,textarea,button{font-family:inherit}
-/* ── YouTube 2026 "Nocturn" Theme ── */
-:root,[data-theme="dark"]{
-  --bg:#0f0f0f;--bg-mesh1:none;--bg-mesh2:none;
-  --surface:#212121;--surface-hover:#2a2a2a;--surface-glass:#212121;
+/* ── YouTube 2026 "Nocturn" (default) ── */
+:root,[data-theme="youtube-dark"]{
+  --bg:#0f0f0f;--surface:#212121;--surface-hover:#2a2a2a;--surface-glass:#212121;
   --border:#303030;--border-subtle:rgba(255,255,255,0.06);--border-hover:rgba(255,0,51,0.3);
   --text:#f1f1f1;--text-secondary:#aaaaaa;--text-muted:#717171;--text-faint:rgba(113,113,113,0.5);
   --primary:#ff0033;--primary-glow:0 0 8px rgba(255,0,51,0.35),0 0 20px rgba(255,0,51,0.12);--primary-bg:rgba(255,0,51,0.1);
@@ -618,10 +617,10 @@ input,select,textarea,button{font-family:inherit}
   --card-shadow:0 4px 16px rgba(0,0,0,0.5);--input-bg:#181818;
   --badge-muted-bg:rgba(255,255,255,0.08);
   --tag-ch-bg:rgba(170,130,255,0.12);--tag-ch-border:rgba(170,130,255,0.15);--tag-ch-text:#c4b5fd;
+  --font:'Roboto',system-ui,sans-serif;--btn-radius:999px;--card-radius:12px;--input-radius:999px;--select-radius:8px;
 }
-[data-theme="light"]{
-  --bg:#ffffff;--bg-mesh1:none;--bg-mesh2:none;
-  --surface:#f2f2f2;--surface-hover:#e8e8e8;--surface-glass:#f2f2f2;
+[data-theme="youtube-light"]{
+  --bg:#ffffff;--surface:#f2f2f2;--surface-hover:#e8e8e8;--surface-glass:#f2f2f2;
   --border:#d9d9d9;--border-subtle:rgba(0,0,0,0.06);--border-hover:rgba(255,0,0,0.3);
   --text:#0f0f0f;--text-secondary:#606060;--text-muted:#909090;--text-faint:rgba(96,96,96,0.4);
   --primary:#ff0000;--primary-glow:0 0 6px rgba(255,0,0,0.2),0 0 16px rgba(255,0,0,0.06);--primary-bg:rgba(255,0,0,0.06);
@@ -634,9 +633,49 @@ input,select,textarea,button{font-family:inherit}
   --card-shadow:0 2px 8px rgba(0,0,0,0.06);--input-bg:#ffffff;
   --badge-muted-bg:rgba(0,0,0,0.05);
   --tag-ch-bg:rgba(120,80,220,0.08);--tag-ch-border:rgba(120,80,220,0.1);--tag-ch-text:#6d28d9;
+  --font:'Roboto',system-ui,sans-serif;--btn-radius:999px;--card-radius:12px;--input-radius:999px;--select-radius:8px;
 }
-body{font-family:'Roboto',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background 0.3s,color 0.3s;letter-spacing:-0.01em}
+/* ── Classic "Obsidian Glass" ── */
+[data-theme="classic-dark"]{
+  --bg:#020617;--surface:#0f172a;--surface-hover:#1e293b;--surface-glass:rgba(15,23,42,0.7);
+  --border:#1e293b;--border-subtle:rgba(255,255,255,0.04);--border-hover:rgba(59,130,246,0.25);
+  --text:#f8fafc;--text-secondary:#94a3b8;--text-muted:#475569;--text-faint:rgba(71,85,105,0.4);
+  --primary:#3b82f6;--primary-glow:0 0 8px rgba(59,130,246,0.4),0 0 24px rgba(59,130,246,0.15);--primary-bg:rgba(59,130,246,0.08);
+  --primary-gradient:linear-gradient(135deg,#3b82f6,#22c55e);
+  --success:#10b981;--success-bg:rgba(16,185,129,0.12);--success-text:#6ee7b7;
+  --danger:#ef4444;--danger-bg:rgba(239,68,68,0.12);--danger-text:#fca5a5;
+  --warning:#f59e0b;--warning-bg:rgba(245,158,11,0.12);--warning-text:#fcd34d;
+  --orange:#fb923c;--orange-bg:rgba(249,115,22,0.12);
+  --sidebar-bg:rgba(2,6,23,0.95);--sidebar-active:rgba(59,130,246,0.08);
+  --card-shadow:0 8px 32px rgba(0,0,0,0.4);--input-bg:rgba(15,23,42,0.8);
+  --badge-muted-bg:rgba(30,41,59,0.6);
+  --tag-ch-bg:rgba(167,139,250,0.1);--tag-ch-border:rgba(167,139,250,0.15);--tag-ch-text:#a78bfa;
+  --font:'Inter',system-ui,sans-serif;--btn-radius:10px;--card-radius:16px;--input-radius:10px;--select-radius:10px;
+}
+[data-theme="classic-light"]{
+  --bg:#f8fafc;--surface:#ffffff;--surface-hover:#f1f5f9;--surface-glass:rgba(255,255,255,0.85);
+  --border:#e2e8f0;--border-subtle:rgba(0,0,0,0.04);--border-hover:rgba(59,130,246,0.3);
+  --text:#0f172a;--text-secondary:#64748b;--text-muted:#94a3b8;--text-faint:rgba(100,116,139,0.4);
+  --primary:#2563eb;--primary-glow:0 0 6px rgba(37,99,235,0.2),0 0 16px rgba(37,99,235,0.08);--primary-bg:rgba(37,99,235,0.06);
+  --primary-gradient:linear-gradient(135deg,#2563eb,#059669);
+  --success:#059669;--success-bg:rgba(5,150,105,0.08);--success-text:#059669;
+  --danger:#dc2626;--danger-bg:rgba(220,38,38,0.06);--danger-text:#dc2626;
+  --warning:#d97706;--warning-bg:rgba(217,119,6,0.06);--warning-text:#d97706;
+  --orange:#ea580c;--orange-bg:rgba(234,88,12,0.06);
+  --sidebar-bg:rgba(255,255,255,0.95);--sidebar-active:rgba(37,99,235,0.05);
+  --card-shadow:0 4px 6px -1px rgba(0,0,0,0.05);--input-bg:#f8fafc;
+  --badge-muted-bg:rgba(241,245,249,0.8);
+  --tag-ch-bg:rgba(139,92,246,0.06);--tag-ch-border:rgba(139,92,246,0.1);--tag-ch-text:#6d28d9;
+  --font:'Inter',system-ui,sans-serif;--btn-radius:10px;--card-radius:16px;--input-radius:10px;--select-radius:10px;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;transition:background 0.3s,color 0.3s,font-family 0.3s;letter-spacing:-0.01em}
 body::before{display:none}
+[data-theme="classic-dark"] body::before,[data-theme="classic-light"] body::before{display:block;content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20%% 0%%,rgba(59,130,246,0.06) 0%%,transparent 50%%),radial-gradient(ellipse at 80%% 100%%,rgba(124,58,237,0.04) 0%%,transparent 50%%);pointer-events:none;z-index:0}
+[data-theme="classic-light"] body::before{display:none}
+[data-theme="classic-dark"] .card,[data-theme="classic-light"] .card{backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);background:var(--surface-glass)}
+[data-theme="classic-light"] .card{border:none;box-shadow:var(--card-shadow)}
+[data-theme="classic-light"] .thumb-wrap{background:#f1f5f9}
+[data-theme="youtube-light"] .thumb-wrap{background:#e8e8e8}
 /* ── Sidebar ── */
 .sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:var(--sidebar-bg);border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;z-index:200;padding:0;transition:width 0.2s,background 0.3s}
 .sidebar.collapsed{width:56px}
@@ -662,30 +701,29 @@ body::before{display:none}
 .status-dot.err{background:var(--danger);box-shadow:0 0 8px rgba(239,68,68,0.5)}
 .sidebar-footer{margin-top:auto;padding:16px;border-top:1px solid var(--border-subtle)}
 /* ── Theme toggle ── */
-.theme-toggle{background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:13px;cursor:pointer;transition:all 0.15s;width:100%%}
-.theme-toggle:hover{background:var(--surface-hover);color:var(--text)}
+.theme-toggle{background:var(--surface-hover);border:1px solid var(--border-subtle);color:var(--text-secondary);padding:6px 10px;border-radius:8px;font-size:12px;cursor:pointer;transition:all 0.15s;width:100%%}
 /* ── Main area ── */
 .main{margin-left:220px;padding:28px 32px;min-height:100vh;position:relative;z-index:1;transition:margin-left 0.2s}
 .sidebar.collapsed ~ .main{margin-left:56px}
 .page-title{font-size:20px;font-weight:500;color:var(--text);margin-bottom:18px;letter-spacing:-0.02em}
 .tab-content{display:none}.tab-content.active{display:block}
 /* ── Glass cards ── */
-.card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:12px;padding:20px;margin-bottom:16px;transition:background 0.3s}
+.card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--card-radius);padding:20px;margin-bottom:16px;transition:background 0.3s}
 .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px 12px}
 .card-title{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-0.2px}
 /* ── Forms ── */
 .form-row{display:grid;grid-template-columns:140px 1fr;gap:10px;margin-bottom:12px;align-items:end}
 .form-row-3{display:grid;grid-template-columns:140px 1fr 160px;gap:10px;margin-bottom:12px;align-items:end}
 label{font-size:13px;color:var(--text-secondary);margin-bottom:3px;display:block;font-weight:500}
-select,input[type=text],textarea{width:100%%;background:var(--input-bg);border:1px solid var(--border);border-radius:999px;padding:8px 16px;color:var(--text);font-size:14px;font-family:inherit;transition:border-color 0.2s,background 0.3s}
+select,input[type=text],textarea{width:100%%;background:var(--input-bg);border:1px solid var(--border);border-radius:var(--input-radius);padding:8px 16px;color:var(--text);font-size:14px;font-family:inherit;transition:border-color 0.2s,background 0.3s}
 textarea{border-radius:12px}
-select{border-radius:8px;padding:8px 12px}
+select{border-radius:var(--select-radius);padding:8px 12px}
 select:focus,input:focus,textarea:focus{outline:none;border-color:var(--text-muted)}
 /* ── Buttons ── */
-button{border:none;border-radius:999px;font-weight:500;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
+button{border:none;border-radius:var(--btn-radius);font-weight:500;font-size:13px;cursor:pointer;transition:all 0.15s;font-family:inherit}
 .btn-primary{background:var(--primary);color:#fff;padding:9px 22px;letter-spacing:0.02em}
 .btn-primary:hover{filter:brightness(1.15);transform:translateY(-1px)}
-.btn-sm{padding:5px 14px;font-size:12px;border-radius:999px;transition:all 0.15s}
+.btn-sm{padding:5px 14px;font-size:12px;border-radius:var(--btn-radius);transition:all 0.15s}
 .btn-sm:hover{filter:brightness(1.1)}
 .btn-blue{background:var(--primary-bg);color:var(--primary);border:1px solid rgba(59,130,246,0.2)}
 .btn-blue:hover{box-shadow:0 0 12px var(--primary-glow)}
@@ -745,7 +783,7 @@ tr:hover .row-actions{opacity:1}
 .input-container{max-width:800px}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
 /* ── Source cards ── */
-.source-card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:12px;padding:18px;margin-bottom:10px;transition:background 0.15s;cursor:default}
+.source-card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--card-radius);padding:18px;margin-bottom:10px;transition:background 0.15s;cursor:default}
 .source-card:hover{background:var(--surface-hover)}
 .source-card:hover .card-actions{opacity:1;transform:translateY(0)}
 .source-card .card-actions{opacity:0;transform:translateY(6px);transition:all 0.25s ease;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -790,7 +828,7 @@ tr:hover .row-actions{opacity:1}
 .filter-bar select{width:auto;min-width:0;flex-shrink:1}
 /* ── Toast ── */
 #toast{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-.toast-msg{background:var(--surface);border:1px solid var(--border-subtle);border-radius:999px;padding:10px 20px;font-size:13px;max-width:400px;pointer-events:auto;animation:tslide .25s ease;box-shadow:0 4px 24px rgba(0,0,0,0.3);color:var(--text)}
+.toast-msg{background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--card-radius);padding:10px 20px;font-size:13px;max-width:400px;pointer-events:auto;animation:tslide .25s ease;box-shadow:0 4px 24px rgba(0,0,0,0.3);color:var(--text)}
 .toast-ok{color:var(--success-text)}
 .toast-err{color:var(--danger-text)}
 .toast-info{color:var(--primary)}
@@ -866,7 +904,12 @@ tr:hover .row-actions{opacity:1}
     <button class="nav-tab" id="tab-btn-settings" onclick="showTab('settings')"><span class="icon">&#9881;</span> <span class="nav-label">Settings</span></button>
   </div>
   <div class="sidebar-footer">
-    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">&#9790; Nocturn</button>
+    <select class="theme-toggle" id="theme-select" onchange="setTheme(this.value)">
+      <option value="youtube-dark">YouTube Dark</option>
+      <option value="youtube-light">YouTube Light</option>
+      <option value="classic-dark">Classic Dark</option>
+      <option value="classic-light">Classic Light</option>
+    </select>
   </div>
 </aside>
 <div id="toast"></div>
@@ -1127,12 +1170,16 @@ tr:hover .row-actions{opacity:1}
 
 </div>
 <script>
-function toggleTheme(){
-  const html=document.documentElement;
-  const isDark=html.dataset.theme!=='light';
-  html.dataset.theme=isDark?'light':'dark';
-  localStorage.setItem('theme',html.dataset.theme);
-  document.getElementById('theme-btn').innerHTML=isDark?'&#9788; Light':'&#9790; Nocturn';
+function setTheme(theme){
+  document.documentElement.dataset.theme=theme;
+  localStorage.setItem('theme',theme);
+  // Load correct font
+  const isClassic=theme.startsWith('classic');
+  if(isClassic&&!document.querySelector('link[href*="Inter"]')){
+    const l=document.createElement('link');l.rel='stylesheet';
+    l.href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap';
+    document.head.appendChild(l);
+  }
 }
 function toggleSidebar(){
   const s=document.getElementById('sidebar');
@@ -1664,8 +1711,10 @@ async function saveConfig(){
 }
 window.onload=function(){
   // Restore theme
-  const savedTheme=localStorage.getItem('theme');
-  if(savedTheme){document.documentElement.dataset.theme=savedTheme;document.getElementById('theme-btn').innerHTML=savedTheme==='light'?'&#9788; Light':'&#9790; Nocturn';}
+  const savedTheme=localStorage.getItem('theme')||'youtube-dark';
+  document.documentElement.dataset.theme=savedTheme;
+  const ts=document.getElementById('theme-select');
+  if(ts)ts.value=savedTheme;
   if(sessionStorage.getItem('sidebarCollapsed')==='1')document.getElementById('sidebar').classList.add('collapsed');
   const h=location.hash.slice(1);
   showTab(['new','sources','media','tasks','schedules','cookies','settings'].includes(h)?h:'sources');
