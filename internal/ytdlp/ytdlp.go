@@ -26,17 +26,20 @@ func cookiesPath() string {
 	return p
 }
 
-// baseArgs returns common yt-dlp arguments (JS runtime, cookies, player client).
+// baseArgs returns common yt-dlp arguments (JS runtime, cookies).
 func baseArgs() []string {
-	args := []string{
-		"--js-runtimes", "node",
-		// Force web player client — required for age-restricted videos with cookies.
-		// Default clients (android_vr, web_safari) reject browser cookies for age-gated content.
-		"--extractor-args", "youtube:player_client=web",
-	}
+	args := []string{"--js-runtimes", "node"}
 	if cp := cookiesPath(); cp != "" {
 		args = append(args, "--cookies", cp)
 	}
+	return args
+}
+
+// downloadArgs returns baseArgs plus download-specific flags.
+// Forces web player client for age-restricted video support.
+func downloadArgs() []string {
+	args := baseArgs()
+	args = append(args, "--extractor-args", "youtube:player_client=web")
 	return args
 }
 
@@ -215,6 +218,7 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 		"--no-warnings",
 		"--skip-download",
 		"--print-json",
+		"--ignore-errors",
 		"--dateafter", dateAfter,
 		"--break-on-reject",
 		url,
@@ -273,7 +277,7 @@ func Download(ctx context.Context, videoURL, outputDir, filenameTemplate, videoF
 		videoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
 	}
 	template := filepath.Join(outputDir, filenameTemplate)
-	args := append(baseArgs(),
+	args := append(downloadArgs(),
 		"-f", videoFormat,
 		"--merge-output-format", "mp4",
 		"--no-warnings",
