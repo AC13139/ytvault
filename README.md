@@ -15,11 +15,11 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 ## Features
 
 - **Sources** — add YouTube channels, playlists, or single videos by URL
+- **YouTube search** — search YouTube directly from the app to discover content
 - **Indexing** — scans a source with `yt-dlp` and stores all video metadata
 - **Downloading** — downloads video+audio merged to MP4 via `ffmpeg`
 - **Scheduler** — set per-source intervals (1h–1 week); auto-download newly found videos
 - **Media management** — pin videos, per-source retention policies, auto-cleanup
-- **YouTube search** — search YouTube directly from the app to discover content
 - **Themes** — YouTube 2026 (dark/light) and Classic Obsidian Glass (dark/light)
 - **Web UI** — sidebar navigation, video thumbnails, responsive design
 - **REST API** — full HTTP API for scripting and automation
@@ -43,6 +43,13 @@ Open **http://localhost:8080** in your browser. To pin a specific version:
 YTVAULT_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
+To use a custom port, set it in the compose command or create a `.env` file:
+
+```bash
+# .env
+YTVAULT_PORT=9090
+```
+
 ### Build from Source
 
 ```bash
@@ -51,65 +58,153 @@ cd ytvault
 docker compose up --build -d
 ```
 
-Open **http://localhost:8080** in your browser.
+### Running Locally (without Docker)
 
-Data (state file + downloaded videos) is stored in `./data/` on the host and persists across restarts and container rebuilds.
+**Prerequisites:** Go 1.26+, `yt-dlp`, `ffmpeg`, and `nodejs` on your PATH.
 
-**Custom port or other overrides:** Create a `docker-compose.override.yml` (gitignored) to override settings without conflicting with `git pull`:
-
-```yaml
-services:
-  api:
-    ports:
-      - "8099:8080"
-```
-
-### Troubleshooting: Docker Hub timeout on macOS
-
-If the build fails with `DeadlineExceeded` or `context deadline exceeded` when pulling base images, Docker Desktop cannot reach Docker Hub. Fix:
-
-1. Open **Docker Desktop → Settings → Docker Engine** and add:
-   ```json
-   {
-     "dns": ["8.8.8.8", "1.1.1.1"],
-     "registry-mirrors": ["https://mirror.gcr.io"]
-   }
-   ```
-2. Click **Apply & Restart**, then re-run `docker compose up --build -d`.
-
-If you are on a VPN, try disabling it for the initial build.
-
-### YouTube cookies (required)
-
-YouTube blocks automated downloads with bot detection. You must provide a cookies file exported from a browser where you are logged into YouTube.
-
-1. Install a browser extension to export cookies in **Netscape format** (e.g. [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) for Chrome).
-2. Go to youtube.com (make sure you are logged in), export cookies, and save as `data/cookies.txt` (inside the data directory).
-3. Restart the container:
-   ```bash
-   docker compose restart
-   ```
-
-The `./data` directory is already mounted into the container. The app reads `YTVAULT_COOKIES_PATH` (default `/data/cookies.txt`) and passes `--cookies` to yt-dlp. If the file does not exist or is a directory, yt-dlp runs without cookies and may fail.
-
----
-
-## Running Locally (without Docker)
-
-**Prerequisites:** Go 1.26+, `yt-dlp`, and `ffmpeg` on your PATH.
-
-Install yt-dlp and ffmpeg:
 ```bash
-pip install yt-dlp          # or: brew install yt-dlp
-brew install ffmpeg         # or: apt install ffmpeg
-```
-
-Run the API server:
-```bash
+pip install "yt-dlp[default]"     # or: brew install yt-dlp
+brew install ffmpeg nodejs        # or: apt install ffmpeg nodejs
 go run ./apps/api
 ```
 
-The server starts on **:8080** by default. Open http://localhost:8080.
+---
+
+## YouTube Cookies (Required)
+
+> **YouTube blocks automated downloads with bot detection.** You must provide a cookies file for YtVault to work. Without cookies, most index and download operations will fail with "Sign in to confirm you're not a bot."
+
+### How to Get Cookies
+
+**Chrome / Edge / Brave / Arc (Chromium browsers):**
+
+1. Install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
+2. Go to [youtube.com](https://www.youtube.com) and make sure you are logged in
+3. Click the extension icon → Export → save the file
+
+**Firefox:**
+
+1. Install [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/) add-on
+2. Go to [youtube.com](https://www.youtube.com) and make sure you are logged in
+3. Click the add-on → "Current Site" → save the file
+
+**Safari (macOS):**
+
+1. Install yt-dlp locally: `brew install yt-dlp`
+2. Run: `yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com`
+3. This generates a `cookies.txt` file in the current directory
+
+### Setup for Docker / Web UI Users
+
+**Option A — Upload via Web UI (easiest):**
+
+1. Open YtVault in your browser → go to the **Cookies** tab
+2. Upload the `cookies.txt` file or paste its content
+3. Click **Save Cookies** — validation runs automatically
+
+**Option B — Copy to data directory:**
+
+1. Copy `cookies.txt` to the `data/` directory on the host
+2. Restart the container: `docker compose restart`
+
+The app reads `YTVAULT_COOKIES_PATH` (default `/data/cookies.txt`).
+
+### Setup for API / CLI Users
+
+Set the `YTVAULT_COOKIES_PATH` environment variable when starting the server:
+
+```bash
+YTVAULT_COOKIES_PATH=/path/to/cookies.txt go run ./apps/api
+```
+
+Or upload via API:
+
+```bash
+# Upload cookies file
+curl -X POST http://localhost:8080/api/v1/cookies \
+  --data-binary @cookies.txt \
+  -H 'Content-Type: text/plain'
+
+# Validate cookies
+curl -X POST http://localhost:8080/api/v1/cookies/validate
+
+# Check status
+curl http://localhost:8080/api/v1/cookies/status
+```
+
+### Notes
+
+- Cookies can be exported from **any machine** — they're not tied to the server
+- Cookies expire over time (weeks to months) — re-export when downloads start failing
+- For **age-restricted videos**: verify your age at [myaccount.google.com/birthday](https://myaccount.google.com/birthdayinfo), then re-export cookies
+- The Cookies tab in the Web UI shows validation status and will prompt you when cookies need refreshing
+
+---
+
+## Web UI Guide
+
+### Sources
+
+The home page. Manage your YouTube sources.
+
+- **+ Create** — add a new source by URL or search YouTube by keywords
+- Each source card shows: title, type badge, URL, download progress bar
+- **Reindex** — scan for new videos (with optional date filter)
+- **Schedule** — set up recurring auto-scan (channel/playlist only)
+- **Retention** — set per-source cleanup policy (delete old downloaded media)
+- **Clean up** — manually run retention cleanup
+- **View** — jump to the Media tab filtered to this source
+
+### Media Library
+
+Browse all indexed videos with thumbnails.
+
+- **Download All** — start downloads for all pending/failed/missing media (respects source filter)
+- **Filter by source** and **filter by status** (Pending / Downloading / Done / Failed / Missing)
+- **Pin** (star icon) — protect a video from auto-cleanup
+- **Download** / **Retry** / **Re-download** — per-video actions based on status
+- Click the media info area to **copy the file path** to clipboard
+- Metadata shown: channel, duration, file size, upload date, download date
+
+### Tasks
+
+Monitor all index and download operations.
+
+- **Start** — manually start a queued task
+- **Stop** — cancel a running task (kills the yt-dlp process)
+- **Retry** — re-queue a failed task
+- **Stop running** / **Retry failed** / **Clear completed** — bulk actions
+- Filter by status (Queued / Running / Succeeded / Failed)
+- Hover over a failed task's "details" link to see the error, click to copy
+
+### Schedules
+
+Overview of recurring scan schedules.
+
+- Inline editing: change interval, date filter, or auto-download — saves automatically
+- **Start / Pause** — enable or disable a schedule without removing it
+- Shows last run and next run times
+
+### Cookies
+
+Manage YouTube authentication cookies.
+
+- Status indicator: Valid (green) / Expired (amber) / Missing (red)
+- Upload via file picker or paste
+- **Test Now** — validates cookies against YouTube
+- Browser-specific setup guides built in
+
+### Settings
+
+Configure download behavior and appearance.
+
+- **Theme** — YouTube 2026 or Classic Obsidian Glass
+- **Dark/Light** — toggle via moon/sun button in sidebar
+- **Folder name** / **File name** — download path templates
+- **Playlist overrides** — use playlist name as folder, playlist index in filename
+- **Video quality** — Best MP4, Best any, 1080p, 720p, Audio only
+- **Max concurrent downloads** — 1 to 5 parallel downloads
+- **Default retention** — global cleanup policy (per-source can override)
 
 ---
 
@@ -117,14 +212,12 @@ The server starts on **:8080** by default. Open http://localhost:8080.
 
 All settings are environment variables:
 
-**API server:**
-
 | Variable | Default | Description |
 |---|---|---|
 | `YTVAULT_ADDR` | `:8080` | Listen address |
 | `YTVAULT_DATA_PATH` | `./data/state.json` | State file path |
 | `YTVAULT_DOWNLOAD_PATH` | `./data/downloads` | Download directory |
-| `YTVAULT_COOKIES_PATH` | _(empty)_ | Path to Netscape-format cookies file for yt-dlp |
+| `YTVAULT_COOKIES_PATH` | `./data/cookies.txt` | Path to cookies file |
 
 **CLI:**
 
@@ -132,75 +225,12 @@ All settings are environment variables:
 |---|---|---|
 | `YTVAULT_API` | `http://127.0.0.1:8080` | API base URL |
 
-Example:
-```bash
-YTVAULT_ADDR=:9000 YTVAULT_DOWNLOAD_PATH=/mnt/media go run ./apps/api
-```
-
----
-
-## Web UI Guide
-
-### Sources tab
-
-The home tab. Add a new source and manage existing ones.
-
-**Adding a source:**
-1. Choose **Kind**: Video, Playlist, or Channel
-2. Paste the YouTube URL
-3. Click **Add Source** — a queued index task is created automatically
-
-**Source actions (per row):**
-- **View media** — switches to the Media tab filtered to that source
-- **Download all** — creates download tasks for all indexed-but-not-downloaded videos
-- **Re-index** — triggers a fresh scan of the source (picks up new videos)
-
-**Setting a schedule:**
-Each source row has an inline schedule form:
-1. Choose an interval (Every 1h / 6h / 12h / 24h / 1 week)
-2. Optionally tick **Auto-dl** — newly found videos are downloaded automatically after each index
-3. Click **Set** to save; the schedule activates immediately
-4. Click **Remove** → **Confirm?** to delete the schedule (two-click, no popup)
-
-### Media tab
-
-Lists all indexed videos. Use the **Filter** dropdown to narrow by source.
-
-Statuses:
-- `pending` — indexed but not downloaded
-- `downloading` — download in progress
-- `done` — downloaded; file path shown
-- `failed` — download failed; check the task error in the Tasks tab
-
-> **Note:** Failed downloads cannot currently be retried through the UI or API. This is a known limitation.
-
-### Tasks tab
-
-Shows all index and download tasks. Click **Start** on any `queued` task to run it immediately. The scheduler starts tasks automatically — manual start is for one-off runs.
-
-Task statuses: `queued` → `running` → `succeeded` / `failed`
-
-### Schedules tab
-
-Overview of all active schedules across sources. Shows last and next run times, enabled state, and auto-download flag. Use the Sources tab to edit or remove individual schedules.
-
 ---
 
 ## CLI Usage
 
-The `yd` CLI connects to a running YtVault API server.
-
 ```bash
-# Build the CLI
-make build          # produces bin/yd
-
-# Or run directly
 go run ./apps/cli <command>
-```
-
-Set `YTVAULT_API` if the server is not on localhost:8080:
-```bash
-export YTVAULT_API=http://my-server:8080
 ```
 
 **Commands:**
@@ -225,15 +255,38 @@ yd task run <task_id>                    # stub-complete a queued task
 |---|---|---|
 | `GET` | `/api/v1/sources` | List all sources |
 | `POST` | `/api/v1/sources` | Add a source |
+| `DELETE` | `/api/v1/sources/{id}` | Remove a source (cascades) |
 | `GET` | `/api/v1/sources/{id}/media` | List media items for a source |
 | `POST` | `/api/v1/sources/{id}/reindex` | Start a new index task |
-| `POST` | `/api/v1/sources/{id}/download-all` | Create and start download tasks for all pending media |
+| `POST` | `/api/v1/sources/{id}/download-all` | Download all pending media for a source |
+| `PUT` | `/api/v1/sources/{id}/retention` | Set retention policy |
+| `GET` | `/api/v1/sources/{id}/cleanup-preview` | Preview cleanup |
+| `POST` | `/api/v1/sources/{id}/cleanup` | Run cleanup |
 
-**Add source request:**
-```json
-{ "kind": "channel", "url": "https://www.youtube.com/@ChannelHandle" }
-```
-Supported kinds: `video`, `playlist`, `channel`
+### Media
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/v1/media/{id}/download` | Download a single media item |
+| `POST` | `/api/v1/media/{id}/retry` | Retry a failed download |
+| `POST` | `/api/v1/media/{id}/pin` | Toggle pin status |
+| `DELETE` | `/api/v1/media/{id}` | Remove media (deletes file) |
+| `POST` | `/api/v1/media/download-all-pending` | Download all pending/failed |
+
+### Tasks
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/tasks` | List all tasks |
+| `POST` | `/api/v1/tasks/{id}/start` | Start a queued task |
+| `POST` | `/api/v1/tasks/{id}/cancel` | Cancel a running task |
+| `POST` | `/api/v1/tasks/{id}/retry` | Retry a failed task |
+| `POST` | `/api/v1/tasks/{id}/run` | Stub-complete a task (legacy/testing) |
+| `POST` | `/api/v1/tasks/{id}/execute` | Execute with mode: `stub` or `fail_stub` |
+| `DELETE` | `/api/v1/tasks/{id}` | Remove a completed task |
+| `DELETE` | `/api/v1/tasks` | Clear all completed tasks |
+| `POST` | `/api/v1/tasks/stop-all` | Cancel all running tasks |
+| `POST` | `/api/v1/tasks/retry-failed` | Retry all failed tasks |
 
 ### Schedules
 
@@ -241,42 +294,39 @@ Supported kinds: `video`, `playlist`, `channel`
 |---|---|---|
 | `GET` | `/api/v1/schedules` | List all schedules |
 | `GET` | `/api/v1/sources/{id}/schedule` | Get schedule for a source |
-| `POST` | `/api/v1/sources/{id}/schedule` | Create or update a schedule |
-| `DELETE` | `/api/v1/sources/{id}/schedule` | Remove a schedule |
+| `POST` | `/api/v1/sources/{id}/schedule` | Create or update schedule |
+| `DELETE` | `/api/v1/sources/{id}/schedule` | Remove schedule |
 
-**Set schedule request:**
-```json
-{ "intervalHours": 24, "enabled": true, "autoDownload": true }
-```
-
-### Tasks
+### Cookies
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/tasks` | List all tasks |
-| `POST` | `/api/v1/tasks/{id}/start` | Start a queued task (async, via worker) |
-| `POST` | `/api/v1/tasks/{id}/run` | Stub-complete a task synchronously (legacy) |
-| `POST` | `/api/v1/tasks/{id}/execute` | Execute with mode: `stub` (succeed) or `fail_stub` (fail) |
+| `GET` | `/api/v1/cookies/status` | Cookie file status + validation |
+| `POST` | `/api/v1/cookies` | Upload cookies (file or raw text) |
+| `DELETE` | `/api/v1/cookies` | Delete cookies file |
+| `POST` | `/api/v1/cookies/validate` | Validate cookies against YouTube |
 
-### Health
+### Config & Search
 
-```
-GET /healthz   →  { "status": "ok", "service": "ytvault-api", "timestamp": "..." }
-```
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/config` | Get current config |
+| `PUT` | `/api/v1/config` | Update config |
+| `GET` | `/api/v1/youtube/search?q=keywords` | Search YouTube |
+| `GET` | `/api/v1/youtube/probe?url=URL` | Diagnostic: test index a URL |
+| `GET` | `/healthz` | Health check |
 
 ---
 
-## Makefile Targets
+## Supported YouTube URL Formats
 
-```bash
-make run-api       # run API server locally
-make test          # run all tests
-make build         # build binaries to bin/
-make docker-up     # docker compose up --build -d
-make docker-down   # docker compose down
-make docker-logs   # follow container logs
-make docker-build  # build Docker image only
-```
+| Kind | Example URLs |
+|---|---|
+| Channel | `https://www.youtube.com/@Handle` |
+| Channel | `https://www.youtube.com/channel/UCxxxxxx` |
+| Playlist | `https://www.youtube.com/playlist?list=PLxxxxxx` |
+| Video | `https://www.youtube.com/watch?v=xxxxxxx` |
+| Video | `https://youtu.be/xxxxxxx` |
 
 ---
 
@@ -291,19 +341,7 @@ internal/
   models/     shared data types
   scheduler/  background schedule runner
   store/      JSON state persistence
-  worker/     async task executor
+  worker/     async task executor (yt-dlp)
   yt/         YouTube URL normalisation
-  ytdlp/      yt-dlp and ffmpeg wrappers
+  ytdlp/      yt-dlp wrapper (index, download, search)
 ```
-
----
-
-## Supported YouTube URL Formats
-
-| Kind | Example URLs |
-|---|---|
-| Channel | `https://www.youtube.com/@Handle` |
-| Channel | `https://www.youtube.com/channel/UCxxxxxx` |
-| Playlist | `https://www.youtube.com/playlist?list=PLxxxxxx` |
-| Video | `https://www.youtube.com/watch?v=xxxxxxx` |
-| Video | `https://youtu.be/xxxxxxx` |
