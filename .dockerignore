@@ -1,5 +1,14 @@
 .git/
+.github/
 data/
 bin/
 tmp/
 *.log
+screenshots/
+README.md
+CLAUDE.md
+Makefile
+docker-compose*.yml
+.env
+.env.*
+cookies.txt

@@ -1,11 +1,14 @@
 # ── Build stage ────────────────────────────────────────────────────────────────
-FROM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -o /app/ytvault-api ./apps/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /app/ytvault-api ./apps/api
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
 FROM python:3.12-slim

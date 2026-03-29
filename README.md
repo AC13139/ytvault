@@ -27,9 +27,23 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 
 ---
 
-## Quick Start (Docker Compose)
+## Quick Start (Docker Hub)
 
 **Prerequisites:** Docker and Docker Compose.
+
+```bash
+mkdir ytvault && cd ytvault
+curl -O https://raw.githubusercontent.com/AC13139/ytvault/main/docker-compose.prod.yml
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Open **http://localhost:8080** in your browser. To pin a specific version:
+
+```bash
+YTVAULT_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
+```
+
+### Build from Source
 
 ```bash
 git clone https://github.com/AC13139/ytvault.git
