@@ -46,6 +46,7 @@ func (sc *Scheduler) run() {
 	defer ticker.Stop()
 
 	// Check immediately on startup so a missed schedule fires right away.
+	log.Printf("scheduler: started, checking for due schedules")
 	sc.tick(time.Now().UTC())
 
 	for {
@@ -60,6 +61,9 @@ func (sc *Scheduler) run() {
 
 func (sc *Scheduler) tick(now time.Time) {
 	due := sc.store.ListDueSchedules(now)
+	if len(due) > 0 {
+		log.Printf("scheduler: %d due schedule(s) at %s", len(due), now.Format("15:04:05"))
+	}
 	for _, sched := range due {
 		// Attempt to create the index task first. This check is atomic
 		// (inside the store lock), so it prevents duplicate active tasks.
