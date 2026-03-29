@@ -1548,7 +1548,7 @@ function dismissMedia(btn,mediaId){
   }
   btn.disabled=true;btn.textContent='Removing…';
   fetch('/api/v1/media/'+mediaId,{method:'DELETE'}).then(res=>{
-    if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
+    if(res.ok||res.status===204){const row=btn.closest('.media-row')||btn.closest('tr');if(row)row.remove();toast('Removed','ok');}
     else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
 }
@@ -1572,7 +1572,7 @@ function dismissTask(btn,taskId){
   }
   btn.disabled=true;btn.textContent='Removing…';
   fetch('/api/v1/tasks/'+taskId,{method:'DELETE'}).then(res=>{
-    if(res.ok||res.status===204){btn.closest('tr').remove();toast('Removed','ok');}
+    if(res.ok||res.status===204){const row=btn.closest('.media-row')||btn.closest('tr');if(row)row.remove();toast('Removed','ok');}
     else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
 }
