@@ -55,16 +55,48 @@ type VideoInfo struct {
 }
 
 // probeResult matches the JSON output of `yt-dlp --flat-playlist -J`.
+type thumbnailEntry struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+	ID     string `json:"id,omitempty"`
+}
+
 type probeResult struct {
-	ID           string        `json:"id"`
-	Title        string        `json:"title"`
-	Channel      string        `json:"channel"`
-	Uploader     string        `json:"uploader"`
-	WebpageURL   string        `json:"webpage_url"`
-	URL          string        `json:"url"`
-	Duration     *float64      `json:"duration"`    // null or number
-	RawUploadDate string       `json:"upload_date"` // YYYYMMDD or empty
-	Entries      []probeResult `json:"entries"`
+	ID            string           `json:"id"`
+	Title         string           `json:"title"`
+	Channel       string           `json:"channel"`
+	Uploader      string           `json:"uploader"`
+	WebpageURL    string           `json:"webpage_url"`
+	URL           string           `json:"url"`
+	Duration      *float64         `json:"duration"`      // null or number
+	RawUploadDate string           `json:"upload_date"`   // YYYYMMDD or empty
+	Thumbnail     string           `json:"thumbnail"`     // best thumbnail URL
+	Thumbnails    []thumbnailEntry `json:"thumbnails"`    // all available thumbnails
+	Entries       []probeResult    `json:"entries"`
+}
+
+// bestPosterURL selects the best image for a source poster.
+// For channels: avatar (square, ~900px). For playlists: playlist thumbnail.
+// Falls back to the top-level thumbnail field.
+func (p probeResult) bestPosterURL() string {
+	// Look for avatar in thumbnails array (channels have "avatar_uncropped")
+	for _, t := range p.Thumbnails {
+		if strings.Contains(t.ID, "avatar") && t.URL != "" {
+			return t.URL
+		}
+	}
+	// Look for a square thumbnail (likely avatar, not banner)
+	for _, t := range p.Thumbnails {
+		if t.Width > 0 && t.Height > 0 && t.Width == t.Height && t.URL != "" {
+			return t.URL
+		}
+	}
+	// Fallback to top-level thumbnail
+	if p.Thumbnail != "" {
+		return p.Thumbnail
+	}
+	return ""
 }
 
 func (p probeResult) channelName() string {
@@ -97,8 +129,8 @@ func (p probeResult) duration() int {
 // dateAfter is an optional yt-dlp date filter (e.g. "now-30days", "now-365days",
 // or "YYYYMMDD"). Pass an empty string to index all available videos.
 //
-// Returns the channel/playlist title and the list of videos found.
-func Index(url, dateAfter string) (string, []VideoInfo, error) {
+// Returns the channel/playlist title, best poster URL, and the list of videos found.
+func Index(url, dateAfter string) (string, string, []VideoInfo, error) {
 	// For channel URLs, target the /videos tab to avoid Shorts/Live
 	indexURL := url
 	if strings.Contains(url, "/@") || strings.Contains(url, "/channel/") || strings.Contains(url, "/c/") || strings.Contains(url, "/user/") {
@@ -106,11 +138,9 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 	}
 
 	if dateAfter != "" {
-		// Try full extraction first (gets real upload dates).
-		// Fall back to flat+limit if it fails (Docker compat).
-		title, videos, err := indexWithDateFilter(indexURL, dateAfter)
+		title, posterURL, videos, err := indexWithDateFilter(indexURL, dateAfter)
 		if err == nil && len(videos) > 0 {
-			return title, videos, nil
+			return title, posterURL, videos, nil
 		}
 		if err != nil {
 			log.Printf("ytdlp: full extraction failed (%v), falling back to flat mode", err)
@@ -123,24 +153,26 @@ func Index(url, dateAfter string) (string, []VideoInfo, error) {
 }
 
 // indexFlat uses --flat-playlist -J (fast, no upload_date).
-func indexFlat(url string) (string, []VideoInfo, error) {
+func indexFlat(url string) (string, string, []VideoInfo, error) {
 	args := append(baseArgs(), "--flat-playlist", "-J", "--no-warnings", url)
 	cmd := exec.Command("yt-dlp", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			return "", "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return "", nil, fmt.Errorf("yt-dlp exec: %w", err)
+		return "", "", nil, fmt.Errorf("yt-dlp exec: %w", err)
 	}
 
 	var root probeResult
 	if err := json.Unmarshal(out, &root); err != nil {
-		return "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
+		return "", "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
 	}
 
+	posterURL := root.bestPosterURL()
+
 	if len(root.Entries) == 0 {
-		return root.Title, []VideoInfo{{
+		return root.Title, posterURL, []VideoInfo{{
 			ID: root.ID, Title: root.Title, URL: root.videoURL(), Channel: root.channelName(), Duration: root.duration(), UploadDate: root.RawUploadDate,
 		}}, nil
 	}
@@ -169,7 +201,7 @@ func indexFlat(url string) (string, []VideoInfo, error) {
 		}
 	}
 	flatten(root.Entries)
-	return name, videos, nil
+	return name, posterURL, videos, nil
 }
 
 // SearchResult represents a single YouTube search result.
@@ -253,7 +285,7 @@ func dateFilterToLimit(dateAfter string) int {
 // to limit by recency. Since full extraction (--print-json) is unreliable in
 // Docker environments, we use flat mode and approximate date filtering by
 // video count (YouTube lists newest first).
-func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
+func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, error) {
 	limit := dateFilterToLimit(dateAfter)
 	args := append(baseArgs(),
 		"--flat-playlist", "-J", "--no-warnings",
@@ -264,23 +296,24 @@ func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			return "", "", nil, fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return "", nil, fmt.Errorf("yt-dlp exec: %w", err)
+		return "", "", nil, fmt.Errorf("yt-dlp exec: %w", err)
 	}
 
 	var root probeResult
 	if err := json.Unmarshal(out, &root); err != nil {
-		return "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
+		return "", "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
 	}
 
 	name := root.channelName()
 	if name == "" {
 		name = root.Title
 	}
+	posterURL := root.bestPosterURL()
 
 	if len(root.Entries) == 0 {
-		return name, []VideoInfo{{
+		return name, posterURL, []VideoInfo{{
 			ID: root.ID, Title: root.Title, URL: root.videoURL(), Channel: root.channelName(), Duration: root.duration(), UploadDate: root.RawUploadDate,
 		}}, nil
 	}
@@ -302,14 +335,14 @@ func indexFlatWithLimit(url, dateAfter string) (string, []VideoInfo, error) {
 		}
 	}
 	flatten(root.Entries)
-	return name, videos, nil
+	return name, posterURL, videos, nil
 }
 
 // indexWithDateFilter uses --dump-json (per-line JSON, full extraction) with
 // --dateafter and --break-on-reject so yt-dlp stops at the first video older
 // than the cutoff. This is slower but required because --flat-playlist doesn't
 // provide upload_date for --dateafter to filter.
-func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
+func indexWithDateFilter(url, dateAfter string) (string, string, []VideoInfo, error) {
 	args := append(baseArgs(),
 		"--no-warnings",
 		"--skip-download",
@@ -332,14 +365,15 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			stderr := strings.TrimSpace(string(exitErr.Stderr))
 			if stderr != "" {
-				return "", nil, fmt.Errorf("yt-dlp: %s", stderr)
+				return "", "", nil, fmt.Errorf("yt-dlp: %s", stderr)
 			}
 		}
-		return "", nil, fmt.Errorf("yt-dlp exec: %w", err)
+		return "", "", nil, fmt.Errorf("yt-dlp exec: %w", err)
 	}
 
 	var videos []VideoInfo
 	channelTitle := ""
+	posterURL := ""
 	for _, line := range strings.Split(outStr, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || !strings.HasPrefix(line, "{") {
@@ -353,17 +387,19 @@ func indexWithDateFilter(url, dateAfter string) (string, []VideoInfo, error) {
 			continue
 		}
 		if channelTitle == "" {
-			// Use channel/uploader name (clean) from the first result
 			channelTitle = entry.channelName()
 			if channelTitle == "" {
 				channelTitle = entry.Title
 			}
+			// Don't use per-video thumbnail as source poster — it's a video
+			// frame, not the channel/playlist avatar. Poster URL stays empty
+			// for the dateAfter path; the flat mode fallback will get it.
 		}
 		videos = append(videos, VideoInfo{
 			ID: entry.ID, Title: entry.Title, URL: entry.videoURL(), Channel: entry.channelName(), Duration: entry.duration(), UploadDate: entry.RawUploadDate,
 		})
 	}
-	return channelTitle, videos, nil
+	return channelTitle, posterURL, videos, nil
 }
 
 // Download downloads a single video to outputDir using yt-dlp.

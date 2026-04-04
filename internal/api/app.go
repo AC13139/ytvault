@@ -60,7 +60,11 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/sources", a.handleCreateSource)
 	mux.HandleFunc("GET /api/v1/sources/{id}/media", a.handleListSourceMedia)
 	mux.HandleFunc("POST /api/v1/sources/{id}/download-all", a.handleDownloadAll)
+	mux.HandleFunc("GET /api/v1/sources/{id}/poster", a.handleGetPoster)
+	mux.HandleFunc("POST /api/v1/sources/{id}/poster", a.handleSetPoster)
+	mux.HandleFunc("DELETE /api/v1/sources/{id}/poster", a.handleDeletePoster)
 	mux.HandleFunc("POST /api/v1/sources/{id}/reindex", a.handleReindex)
+	mux.HandleFunc("GET /api/v1/images/search", a.handleImageSearch)
 	mux.HandleFunc("GET /api/v1/sources/{id}/schedule", a.handleGetSchedule)
 	mux.HandleFunc("POST /api/v1/sources/{id}/schedule", a.handleSetSchedule)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}/schedule", a.handleDeleteSchedule)
@@ -359,7 +363,7 @@ func (a *App) handleYouTubeProbe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dateAfter := r.URL.Query().Get("dateAfter")
-	title, videos, err := ytdlp.Index(url, dateAfter)
+	title, _, videos, err := ytdlp.Index(url, dateAfter)
 	resp := map[string]any{
 		"url":       url,
 		"dateAfter": dateAfter,
@@ -569,8 +573,203 @@ func (a *App) handleCancelTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"message": "task cancellation requested"})
 }
 
+func (a *App) handleGetPoster(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if src.PosterPath == "" {
+		// For videos without a poster, redirect to YouTube thumbnail
+		if src.Kind == models.SourceKindVideo && src.Locator != "" {
+			http.Redirect(w, r, "https://img.youtube.com/vi/"+src.Locator+"/mqdefault.jpg", http.StatusTemporaryRedirect)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeFile(w, r, src.PosterPath)
+}
+
+func (a *App) handleSetPoster(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	var req struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		writeError(w, http.StatusBadRequest, "invalid", "url is required")
+		return
+	}
+	if !strings.HasPrefix(req.URL, "https://") {
+		writeError(w, http.StatusBadRequest, "invalid", "url must be https")
+		return
+	}
+	// SSRF protection: reject private/loopback/metadata URLs
+	for _, blocked := range []string{"localhost", "127.", "10.", "172.16.", "192.168.", "169.254.", "[::1]", "metadata"} {
+		if strings.Contains(strings.ToLower(req.URL), blocked) {
+			writeError(w, http.StatusBadRequest, "invalid", "URL points to a private/internal address")
+			return
+		}
+	}
+	posterDir := filepath.Join(a.downloadDir, ".posters")
+	if err := os.MkdirAll(posterDir, 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	posterPath := filepath.Join(posterDir, src.ID+".jpg")
+	tmp := posterPath + ".tmp"
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+	resp, err := client.Get(req.URL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "fetch_failed", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "fetch_failed", fmt.Sprintf("HTTP %d", resp.StatusCode))
+		return
+	}
+
+	// Read limited body and validate actual content type
+	limited := io.LimitReader(resp.Body, 2<<20)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "read_failed", err.Error())
+		return
+	}
+	detected := http.DetectContentType(data)
+	if !strings.HasPrefix(detected, "image/") {
+		writeError(w, http.StatusBadRequest, "invalid", "content is not an image: "+detected)
+		return
+	}
+
+	// Atomic write
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	if err := os.Rename(tmp, posterPath); err != nil {
+		os.Remove(tmp)
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	if err := a.store.UpdateSourcePoster(id, posterPath, req.URL); err != nil {
+		writeError(w, http.StatusInternalServerError, "store_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"posterPath": posterPath})
+}
+
+func (a *App) handleDeletePoster(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if src.PosterPath != "" {
+		os.Remove(src.PosterPath)
+	}
+	a.store.UpdateSourcePoster(id, "", "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleImageSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "missing_query", "q parameter required")
+		return
+	}
+	// DuckDuckGo image search (best-effort, no API key)
+	client := &http.Client{Timeout: 10 * time.Second}
+	// Step 1: get vqd token
+	searchURL := "https://duckduckgo.com/?q=" + strings.ReplaceAll(q, " ", "+") + "&iax=images&ia=images"
+	resp1, err := client.Get(searchURL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "search_failed", "DuckDuckGo unreachable")
+		return
+	}
+	body1, _ := io.ReadAll(io.LimitReader(resp1.Body, 100<<10))
+	resp1.Body.Close()
+	// Extract vqd token
+	vqd := ""
+	if idx := strings.Index(string(body1), "vqd=\""); idx >= 0 {
+		rest := string(body1)[idx+5:]
+		if end := strings.Index(rest, "\""); end >= 0 {
+			vqd = rest[:end]
+		}
+	}
+	if vqd == "" {
+		if idx := strings.Index(string(body1), "vqd='"); idx >= 0 {
+			rest := string(body1)[idx+5:]
+			if end := strings.Index(rest, "'"); end >= 0 {
+				vqd = rest[:end]
+			}
+		}
+	}
+	if vqd == "" {
+		writeError(w, http.StatusBadGateway, "search_failed", "could not extract search token")
+		return
+	}
+	// Step 2: fetch image results
+	imgURL := fmt.Sprintf("https://duckduckgo.com/i.js?q=%s&vqd=%s&o=json&p=1&f=,,,,,", strings.ReplaceAll(q, " ", "+"), vqd)
+	req2, _ := http.NewRequest("GET", imgURL, nil)
+	req2.Header.Set("User-Agent", "Mozilla/5.0")
+	resp2, err := client.Do(req2)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "search_failed", err.Error())
+		return
+	}
+	defer resp2.Body.Close()
+	body2, _ := io.ReadAll(io.LimitReader(resp2.Body, 500<<10))
+	var ddgResp struct {
+		Results []struct {
+			Image     string `json:"image"`
+			Thumbnail string `json:"thumbnail"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+			Title     string `json:"title"`
+		} `json:"results"`
+	}
+	json.Unmarshal(body2, &ddgResp)
+	type imgResult struct {
+		URL       string `json:"url"`
+		Thumbnail string `json:"thumbnail"`
+		Width     int    `json:"width"`
+		Height    int    `json:"height"`
+		Title     string `json:"title"`
+	}
+	results := make([]imgResult, 0, 20)
+	for _, r := range ddgResp.Results {
+		if r.Image == "" || len(results) >= 20 {
+			break
+		}
+		results = append(results, imgResult{URL: r.Image, Thumbnail: r.Thumbnail, Width: r.Width, Height: r.Height, Title: r.Title})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
 func (a *App) handleDeleteSource(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Clean up poster before deleting source
+	if src, ok := a.store.GetSource(id); ok && src.PosterPath != "" {
+		os.Remove(src.PosterPath)
+	}
 	if err := a.store.DeleteSource(id); err != nil {
 		writeError(w, http.StatusNotFound, "delete_failed", err.Error())
 		return

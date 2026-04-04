@@ -5,7 +5,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -138,7 +141,7 @@ func (w *Worker) runIndex(task models.Task) error {
 	}
 
 	log.Printf("worker: indexing source %s (%s) kind=%s dateAfter=%q", src.ID, src.URL, src.Kind, task.DateAfter)
-	title, videos, err := ytdlp.Index(src.URL, task.DateAfter)
+	title, posterURL, videos, err := ytdlp.Index(src.URL, task.DateAfter)
 	if err != nil {
 		return fmt.Errorf("index %s: %w", src.URL, err)
 	}
@@ -153,6 +156,23 @@ func (w *Worker) runIndex(task models.Task) error {
 	if title != "" {
 		if err := w.store.UpdateSourceTitle(src.ID, title); err != nil {
 			log.Printf("worker: update title for source %s: %v", src.ID, err)
+		}
+	}
+
+	// Auto-download poster if not already set
+	if posterURL != "" && src.PosterPath == "" {
+		posterDir := filepath.Join(w.downloadDir, ".posters")
+		if err := os.MkdirAll(posterDir, 0o755); err == nil {
+			posterPath := filepath.Join(posterDir, src.ID+".jpg")
+			if err := downloadPoster(posterURL, posterPath); err != nil {
+				log.Printf("worker: poster download for source %s: %v", src.ID, err)
+			} else {
+				if err := w.store.UpdateSourcePoster(src.ID, posterPath, posterURL); err != nil {
+					log.Printf("worker: update poster for source %s: %v", src.ID, err)
+				} else {
+					log.Printf("worker: poster saved for source %s", src.ID)
+				}
+			}
 		}
 	}
 
@@ -256,4 +276,38 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 		fileSize = fi.Size()
 	}
 	return w.store.UpdateMediaItemStatus(item.ID, models.MediaItemStatusDone, filePath, "", fileSize)
+}
+
+// downloadPoster downloads an image from url and saves it to destPath.
+// Validates content type and enforces a 2MB size limit.
+func downloadPoster(url, destPath string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("fetch: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "image/") {
+		return fmt.Errorf("not an image: %s", ct)
+	}
+
+	// Limit to 2MB
+	limited := io.LimitReader(resp.Body, 2<<20)
+	tmp := destPath + ".tmp"
+	f, err := os.Create(tmp)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(f, limited); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	f.Close()
+	return os.Rename(tmp, destPath)
 }

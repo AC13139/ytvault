@@ -272,6 +272,21 @@ func (s *Store) UpdateSourceTitle(id, title string) error {
 	return fmt.Errorf("source %s not found", id)
 }
 
+// UpdateSourcePoster sets the poster image path and original URL for a source.
+func (s *Store) UpdateSourcePoster(id, posterPath, posterURL string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Sources {
+		if s.state.Sources[i].ID == id {
+			s.state.Sources[i].PosterPath = posterPath
+			s.state.Sources[i].PosterURL = posterURL
+			s.state.Sources[i].UpdatedAt = time.Now().UTC()
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("source %s not found", id)
+}
+
 // ── Tasks ────────────────────────────────────────────────────────────────────
 
 func (s *Store) ListTasks() []models.Task {

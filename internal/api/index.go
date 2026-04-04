@@ -261,7 +261,9 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			`<div class="source-card">`+
+			`<div class="source-card" style="display:flex;gap:14px">`+
+				`<img class="source-poster" src="/api/v1/sources/%s/poster" onerror="this.style.display='none'" style="width:52px;height:52px;border-radius:50%%;object-fit:cover;flex-shrink:0">`+
+				`<div style="flex:1;min-width:0">`+
 				`<div class="source-header">`+
 				`<div class="src-title" title="%s">%s</div>`+
 				`<span class="tag %s">%s</span>`+
@@ -273,7 +275,8 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				`<span class="stat-num">%d / %d</span>`+
 				`</div>`+
 				`<div class="card-actions">%s</div>`+
-				`</div>`,
+				`</div></div>`,
+			html.EscapeString(s.ID),
 			html.EscapeString(s.Title), html.EscapeString(s.Title),
 			kindClass, html.EscapeString(string(s.Kind)),
 			html.EscapeString(s.ID),

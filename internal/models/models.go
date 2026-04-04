@@ -32,6 +32,8 @@ type Source struct {
 	ValidationSummary  string       `json:"validationSummary,omitempty"`
 	PrototypeReadiness string       `json:"prototypeReadiness,omitempty"`
 	RetentionDays      int          `json:"retentionDays,omitempty"` // 0 = keep forever
+	PosterPath         string       `json:"posterPath,omitempty"`    // local file path to poster image
+	PosterURL          string       `json:"posterUrl,omitempty"`     // original remote URL
 	Status             SourceStatus `json:"status"`
 	CreatedAt          time.Time    `json:"createdAt"`
 	UpdatedAt          time.Time    `json:"updatedAt"`
