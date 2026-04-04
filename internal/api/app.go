@@ -697,15 +697,18 @@ func (a *App) handleFetchPoster(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "source not found")
 		return
 	}
-	// Quick index to get poster URL (no video extraction)
-	_, posterURL, _, err := ytdlp.Index(src.URL, "")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "index_failed", err.Error())
-		return
-	}
-	// For videos, use YouTube thumbnail
-	if posterURL == "" && src.Kind == models.SourceKindVideo && src.Locator != "" {
+	var posterURL string
+	if src.Kind == models.SourceKindVideo && src.Locator != "" {
+		// For videos, use YouTube thumbnail directly (no yt-dlp needed)
 		posterURL = "https://img.youtube.com/vi/" + src.Locator + "/maxresdefault.jpg"
+	} else {
+		// For channels/playlists, fetch metadata only (no video listing)
+		var err error
+		posterURL, err = ytdlp.FetchPosterURL(src.URL)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "fetch_failed", err.Error())
+			return
+		}
 	}
 	if posterURL == "" {
 		writeError(w, http.StatusNotFound, "no_poster", "no poster image found for this source")

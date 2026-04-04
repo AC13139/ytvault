@@ -338,6 +338,40 @@ func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, err
 	return name, posterURL, videos, nil
 }
 
+// FetchPosterURL fetches only the poster/avatar URL for a source without
+// indexing all videos. Much faster than Index() for poster-only fetches.
+// FetchPosterURL fetches only the poster/avatar URL for a source without
+// indexing all videos. Much faster than Index() for poster-only fetches.
+func FetchPosterURL(url string) (string, error) {
+	// For channels, target the /videos tab to get channel-level metadata
+	if strings.Contains(url, "/@") || strings.Contains(url, "/channel/") || strings.Contains(url, "/c/") || strings.Contains(url, "/user/") {
+		url = strings.TrimRight(url, "/") + "/videos"
+	}
+	args := append(baseArgs(),
+		"--flat-playlist", "-J", "--no-warnings",
+		"--playlist-items", "1:1", // just 1 entry — fast, but still returns root metadata
+		url,
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("yt-dlp: %w", err)
+	}
+	var root probeResult
+	if err := json.Unmarshal(out, &root); err != nil {
+		return "", fmt.Errorf("parse: %w", err)
+	}
+	poster := root.bestPosterURL()
+	// For playlists/channels without avatar, use the best available thumbnail
+	if poster == "" && len(root.Thumbnails) > 0 {
+		// Pick the largest thumbnail (last in the array, which is typically highest res)
+		poster = root.Thumbnails[len(root.Thumbnails)-1].URL
+	}
+	return poster, nil
+}
+
 // indexWithDateFilter uses --dump-json (per-line JSON, full extraction) with
 // --dateafter and --break-on-reject so yt-dlp stops at the first video older
 // than the cutoff. This is slower but required because --flat-playlist doesn't
