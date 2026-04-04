@@ -38,9 +38,14 @@ func baseArgs() []string {
 
 // downloadArgs returns baseArgs plus download-specific flags.
 // Forces web player client for age-restricted video support.
+// Trims trailing whitespace from metadata fields to prevent filesystem issues.
 func downloadArgs() []string {
 	args := baseArgs()
-	args = append(args, "--extractor-args", "youtube:player_client=web")
+	args = append(args,
+		"--extractor-args", "youtube:player_client=web",
+		// Trim trailing spaces from uploader/channel names (e.g. "王志安 " → "王志安")
+		"--replace-in-metadata", "uploader,channel", "\\s+$", "",
+	)
 	return args
 }
 
@@ -101,9 +106,9 @@ func (p probeResult) bestPosterURL() string {
 
 func (p probeResult) channelName() string {
 	if p.Channel != "" {
-		return p.Channel
+		return strings.TrimSpace(p.Channel)
 	}
-	return p.Uploader
+	return strings.TrimSpace(p.Uploader)
 }
 
 func (p probeResult) videoURL() string {
@@ -181,7 +186,7 @@ func indexFlat(url string) (string, string, []VideoInfo, error) {
 	// suffixes like " - Videos" for channel tabs
 	name := root.channelName()
 	if name == "" {
-		name = root.Title
+		name = strings.TrimSpace(root.Title)
 	}
 
 	videos := make([]VideoInfo, 0, len(root.Entries))
@@ -308,7 +313,7 @@ func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, err
 
 	name := root.channelName()
 	if name == "" {
-		name = root.Title
+		name = strings.TrimSpace(root.Title)
 	}
 	posterURL := root.bestPosterURL()
 

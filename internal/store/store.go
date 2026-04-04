@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -262,6 +263,7 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, d
 func (s *Store) UpdateSourceTitle(id, title string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	title = strings.TrimSpace(title)
 	for i := range s.state.Sources {
 		if s.state.Sources[i].ID == id {
 			s.state.Sources[i].Title = title
