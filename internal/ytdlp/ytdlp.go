@@ -184,9 +184,12 @@ func indexFlat(url string) (string, string, []VideoInfo, error) {
 
 	// Use channel/uploader name (clean) instead of root.Title which may have
 	// suffixes like " - Videos" for channel tabs
-	name := root.channelName()
-	if name == "" {
-		name = strings.TrimSpace(root.Title)
+	// For playlists, root.Title is the playlist name (what we want).
+	// For channels, root.channelName() is cleaner (no " - Videos" suffix).
+	// Detect playlists by checking if Title doesn't end with " - Videos"/etc.
+	name := strings.TrimSpace(root.Title)
+	if ch := root.channelName(); ch != "" && (name == "" || strings.HasSuffix(name, " - Videos") || strings.HasSuffix(name, " - Shorts") || strings.HasSuffix(name, " - Live")) {
+		name = ch
 	}
 
 	videos := make([]VideoInfo, 0, len(root.Entries))
@@ -311,9 +314,12 @@ func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, err
 		return "", "", nil, fmt.Errorf("parse yt-dlp output: %w", err)
 	}
 
-	name := root.channelName()
-	if name == "" {
-		name = strings.TrimSpace(root.Title)
+	// For playlists, root.Title is the playlist name (what we want).
+	// For channels, root.channelName() is cleaner (no " - Videos" suffix).
+	// Detect playlists by checking if Title doesn't end with " - Videos"/etc.
+	name := strings.TrimSpace(root.Title)
+	if ch := root.channelName(); ch != "" && (name == "" || strings.HasSuffix(name, " - Videos") || strings.HasSuffix(name, " - Shorts") || strings.HasSuffix(name, " - Live")) {
+		name = ch
 	}
 	posterURL := root.bestPosterURL()
 
