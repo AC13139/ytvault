@@ -155,13 +155,18 @@ func buildRetentionSelect(sourceID string, current int) string {
 
 func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool, retentionDays int, dateAfter string) string {
 	sid := html.EscapeString(sourceID)
+	posterBtn := fmt.Sprintf(
+		` <button class="btn-sm btn-gray" title="Fetch or change poster image" onclick="withLoading(this,()=>fetchPoster('%s'))">Poster</button>`,
+		sid,
+	)
 	if kind == models.SourceKindVideo {
 		return fmt.Sprintf(
 			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
 				`<button class="btn-sm btn-gray" title="Re-scan this video" onclick="withLoading(this,()=>reindexSource('%s',''))">Reindex</button>`+
+				`%s`+
 				` <button class="btn-sm btn-orange" title="Remove this source and its media" onclick="deleteSource(this,'%s')">Remove</button>`+
 				`</div>`,
-			sid, sid,
+			sid, posterBtn, sid,
 		)
 	}
 	schedBtn := ""
@@ -182,13 +187,14 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool,
 			`<span class="src-meta" style="font-size:11px">Retention:</span>`+
 			`%s`+
 			`<button class="btn-sm btn-gray" title="Delete old downloaded media based on retention" onclick="cleanupSource('%s')">Clean up</button>`+
+			`%s`+
 			` <button class="btn-sm btn-orange" title="Remove this source and all its media" onclick="deleteSource(this,'%s')">Remove</button>`+
 			`</div>`,
 		sid, buildDateAfterOptions(dateAfter),
 		sid, sid,
 		schedBtn,
 		buildRetentionSelect(sourceID, retentionDays),
-		sid, sid,
+		sid, posterBtn, sid,
 	)
 }
 
@@ -1578,6 +1584,13 @@ function dismissTask(btn,taskId){
     if(res.ok||res.status===204){const row=btn.closest('.media-row')||btn.closest('tr');if(row)row.remove();toast('Removed','ok');}
     else{btn.disabled=false;btn.textContent='Remove';btn.className='btn-sm btn-orange';btn.dataset.confirm='0';toast('Failed','err');}
   }).catch(()=>{btn.disabled=false;});
+}
+async function fetchPoster(sourceId){
+  try{
+    const res=await fetch('/api/v1/sources/'+sourceId+'/fetch-poster',{method:'POST'});
+    if(res.ok){const data=await res.json();toast('Poster updated','ok');setTimeout(()=>location.reload(),400);}
+    else{const data=await res.json().catch(()=>({}));toast('Poster: '+(data.error?.message||'not found'),'err');}
+  }catch(e){toast('Network error','err');}
 }
 async function setRetention(sourceId,value){
   const days=parseInt(value);

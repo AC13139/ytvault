@@ -63,6 +63,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/sources/{id}/poster", a.handleGetPoster)
 	mux.HandleFunc("POST /api/v1/sources/{id}/poster", a.handleSetPoster)
 	mux.HandleFunc("DELETE /api/v1/sources/{id}/poster", a.handleDeletePoster)
+	mux.HandleFunc("POST /api/v1/sources/{id}/fetch-poster", a.handleFetchPoster)
 	mux.HandleFunc("POST /api/v1/sources/{id}/reindex", a.handleReindex)
 	mux.HandleFunc("GET /api/v1/images/search", a.handleImageSearch)
 	mux.HandleFunc("GET /api/v1/sources/{id}/schedule", a.handleGetSchedule)
@@ -687,6 +688,68 @@ func (a *App) handleDeletePoster(w http.ResponseWriter, r *http.Request) {
 	}
 	a.store.UpdateSourcePoster(id, "", "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *App) handleFetchPoster(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	src, ok := a.store.GetSource(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "not_found", "source not found")
+		return
+	}
+	// Quick index to get poster URL (no video extraction)
+	_, posterURL, _, err := ytdlp.Index(src.URL, "")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "index_failed", err.Error())
+		return
+	}
+	// For videos, use YouTube thumbnail
+	if posterURL == "" && src.Kind == models.SourceKindVideo && src.Locator != "" {
+		posterURL = "https://img.youtube.com/vi/" + src.Locator + "/maxresdefault.jpg"
+	}
+	if posterURL == "" {
+		writeError(w, http.StatusNotFound, "no_poster", "no poster image found for this source")
+		return
+	}
+	// Download and save
+	posterDir := filepath.Join(a.downloadDir, ".posters")
+	if err := os.MkdirAll(posterDir, 0o755); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	posterPath := filepath.Join(posterDir, src.ID+".jpg")
+	tmp := posterPath + ".tmp"
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(posterURL)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "fetch_failed", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		writeError(w, http.StatusBadGateway, "fetch_failed", fmt.Sprintf("HTTP %d", resp.StatusCode))
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "read_failed", err.Error())
+		return
+	}
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	if err := os.Rename(tmp, posterPath); err != nil {
+		os.Remove(tmp)
+		writeError(w, http.StatusInternalServerError, "write_failed", err.Error())
+		return
+	}
+	if err := a.store.UpdateSourcePoster(id, posterPath, posterURL); err != nil {
+		writeError(w, http.StatusInternalServerError, "store_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"posterPath": posterPath, "posterURL": posterURL})
 }
 
 func (a *App) handleImageSearch(w http.ResponseWriter, r *http.Request) {
