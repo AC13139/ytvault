@@ -280,27 +280,26 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			`<div class="source-card%s" data-progress="%d" style="display:flex;gap:14px;--warmth:%d%%">`+
+			`<div class="source-card%s" data-progress="%d" style="display:flex;gap:14px">`+
 				`<img class="source-poster" src="/api/v1/sources/%s/poster" onerror="this.style.display='none'" style="width:52px;height:52px;border-radius:50%%;object-fit:cover;flex-shrink:0">`+
 				`<div style="flex:1;min-width:0">`+
 				`<div class="source-header">`+
-				`<div class="src-title" title="%s">%s</div>`+
-				`<span class="tag %s">%s</span>`+
-				`<span class="source-whisper">%d / %d</span>`+
+				`<div class="src-title" title="%s">%s <span class="tag %s" style="vertical-align:middle;margin-left:4px">%s</span></div>`+
+				`<span class="source-count">%d indexed · %d downloaded</span>`+
 				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')" style="flex-shrink:0">View</button>`+
 				`</div>`+
 				`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`+
-				`<span class="sr-only">%d of %d videos downloaded</span>`+
+				`<div class="source-progress%s"><div class="source-progress-fill" style="width:%d%%"></div></div>`+
 				`<div class="card-actions">%s</div>`+
 				`</div></div>`,
-			activeClass, pct, pct,
+			activeClass, pct,
 			html.EscapeString(s.ID),
 			html.EscapeString(s.Title), html.EscapeString(s.Title),
 			kindClass, html.EscapeString(string(s.Kind)),
-			doneCount, mediaCount,
+			mediaCount, doneCount,
 			html.EscapeString(s.ID),
 			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
-			doneCount, mediaCount,
+			func() string { if isActive { return " source-progress-active" }; return "" }(), pct,
 			buildActionsCell(s.ID, s.Kind,
 				func() bool { _, ok := schedBySource[s.ID]; return ok }(),
 				s.RetentionDays,
@@ -814,8 +813,11 @@ tr:hover .row-actions{opacity:1}
 @keyframes activity-flow{0%%{background-position:-200%% 0}100%%{background-position:200%% 0}}
 @keyframes nav-breathe{0%%,100%%{opacity:0.4}50%%{opacity:1}}
 .source-card.source-active{animation:breathe 3s ease-in-out infinite}
-.source-whisper{font-size:10px;color:var(--text-faint);opacity:0;transition:opacity 0.3s;font-family:'JetBrains Mono',ui-monospace,monospace}
-.source-card:hover .source-whisper{opacity:1}
+.source-count{font-size:11px;color:var(--text-muted);margin-left:auto;white-space:nowrap;font-family:'JetBrains Mono',ui-monospace,monospace}
+.source-progress{height:3px;border-radius:2px;background:var(--border-subtle);overflow:hidden;margin:6px 0;position:relative}
+.source-progress-fill{height:100%%;border-radius:2px;background:var(--primary-gradient);transition:width 0.6s ease}
+.source-progress-active .source-progress-fill{position:relative;overflow:hidden}
+.source-progress-active .source-progress-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);background-size:200%% 100%%;animation:activity-flow 2s linear infinite}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 /* Thumbnail-as-status */
 .thumb-wrap.thumb-pending img{filter:saturate(0.35) brightness(0.7);transition:filter 0.6s}
