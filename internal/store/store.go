@@ -890,6 +890,21 @@ func (s *Store) DeleteCompletedTasks() int {
 	return removed
 }
 
+// HealthSummary returns lightweight counts of media and task statuses.
+func (s *Store) HealthSummary() map[string]map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	media := map[string]int{}
+	for _, m := range s.state.MediaItems {
+		media[string(m.Status)]++
+	}
+	tasks := map[string]int{}
+	for _, t := range s.state.Tasks {
+		tasks[string(t.Status)]++
+	}
+	return map[string]map[string]int{"media": media, "tasks": tasks}
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const DefaultVideoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"

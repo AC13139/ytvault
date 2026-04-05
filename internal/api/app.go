@@ -91,6 +91,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/tasks/retry-failed", a.handleRetryAllFailed)
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
+	mux.HandleFunc("GET /api/v1/health-summary", a.handleHealthSummary)
 	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
 	mux.HandleFunc("GET /api/v1/youtube/probe", a.handleYouTubeProbe)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
@@ -355,6 +356,10 @@ func (a *App) handleYouTubeSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+func (a *App) handleHealthSummary(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, a.store.HealthSummary())
 }
 
 func (a *App) handleYouTubeProbe(w http.ResponseWriter, r *http.Request) {

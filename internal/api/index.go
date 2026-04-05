@@ -266,28 +266,41 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			kindClass = "tag-playlist"
 		}
 
+		// Determine if source is active (any downloading media or running tasks)
+		isActive := false
+		for _, m := range mediaItems {
+			if m.Status == models.MediaItemStatusDownloading {
+				isActive = true
+				break
+			}
+		}
+		activeClass := ""
+		if isActive {
+			activeClass = " source-active"
+		}
+
 		sourceRows = append(sourceRows, fmt.Sprintf(
-			`<div class="source-card" style="display:flex;gap:14px">`+
+			`<div class="source-card%s" data-progress="%d" style="display:flex;gap:14px;--warmth:%d%%">`+
 				`<img class="source-poster" src="/api/v1/sources/%s/poster" onerror="this.style.display='none'" style="width:52px;height:52px;border-radius:50%%;object-fit:cover;flex-shrink:0">`+
 				`<div style="flex:1;min-width:0">`+
 				`<div class="source-header">`+
 				`<div class="src-title" title="%s">%s</div>`+
 				`<span class="tag %s">%s</span>`+
+				`<span class="source-whisper">%d / %d</span>`+
 				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')" style="flex-shrink:0">View</button>`+
 				`</div>`+
 				`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`+
-				`<div style="display:flex;align-items:center;gap:10px;margin-top:4px">`+
-				`<div class="progress-bar" style="flex:1"><div class="fill" style="width:%d%%"></div></div>`+
-				`<span class="stat-num">%d / %d</span>`+
-				`</div>`+
+				`<span class="sr-only">%d of %d videos downloaded</span>`+
 				`<div class="card-actions">%s</div>`+
 				`</div></div>`,
+			activeClass, pct, pct,
 			html.EscapeString(s.ID),
 			html.EscapeString(s.Title), html.EscapeString(s.Title),
 			kindClass, html.EscapeString(string(s.Kind)),
+			doneCount, mediaCount,
 			html.EscapeString(s.ID),
 			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
-			pct, doneCount, mediaCount,
+			doneCount, mediaCount,
 			buildActionsCell(s.ID, s.Kind,
 				func() bool { _, ok := schedBySource[s.ID]; return ok }(),
 				s.RetentionDays,
@@ -360,18 +373,6 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 
 		// Status icon for thumbnail overlay
-		stClass := "st-pending"
-		stIcon := "&#9679;"
-		switch m.Status {
-		case models.MediaItemStatusDone:
-			stClass = "st-done"; stIcon = "&#10003;"
-		case models.MediaItemStatusFailed:
-			stClass = "st-failed"; stIcon = "&#10007;"
-		case models.MediaItemStatusDownloading:
-			stClass = "st-downloading"; stIcon = "&#8595;"
-		case models.MediaItemStatusMissing:
-			stClass = "st-missing"; stIcon = "?"
-		}
 
 		// Build metadata line: duration, file size, upload date, download date
 		metaParts := []string{}
@@ -403,15 +404,23 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				html.EscapeString(m.FilePath), html.EscapeString(m.FilePath))
 		}
 
+		// Map status to thumb class for proximal awareness
+		thumbClass := "thumb-" + string(m.Status)
+		// Hover status text (hidden by default, shown on hover)
+		hoverStatus := ""
+		if m.Status != models.MediaItemStatusDone {
+			hoverStatus = fmt.Sprintf(`<span class="media-hover-status">%s</span>`, html.EscapeString(string(m.Status)))
+		}
+
 		mediaRows = append(mediaRows, fmt.Sprintf(
 			`<div class="media-row" data-source="%s" data-status="%s">`+
-				`<div class="thumb-wrap"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><div class="thumb-status %s">%s</div></div>`+
-				`<div class="media-info"%s><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span><span class="m-sub">%s</span></div>`+
+				`<div class="thumb-wrap %s"><img src="https://img.youtube.com/vi/%s/mqdefault.jpg" loading="lazy" onerror="this.style.display='none'"><span class="sr-only">%s</span></div>`+
+				`<div class="media-info"%s><span class="m-title" title="%s">%s</span><span class="m-sub">%s</span>%s</div>`+
 				`<div class="row-actions">%s</div></div>`,
 			html.EscapeString(m.SourceID), html.EscapeString(string(m.Status)),
-			html.EscapeString(m.VideoID), stClass, stIcon,
+			thumbClass, html.EscapeString(m.VideoID), html.EscapeString(string(m.Status)),
 			filePathAttr, html.EscapeString(m.Title), html.EscapeString(m.Title),
-			metaLine, statusBadge(string(m.Status)),
+			metaLine, hoverStatus,
 			action,
 		))
 	}
@@ -580,22 +589,42 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			break
 		}
 	}
-	autoRefreshJS := ""
-	if hasRunning {
-		autoRefreshJS = `(function quietPoll(){
+	// Ambient health poll — always on, updates CSS states only, no page flash
+	autoRefreshJS := `(function ambientPoll(){
+  let prevActive=` + fmt.Sprintf("%v", hasRunning) + `;
   function poll(){
     const tab=location.hash.slice(1);
-    if(tab==='settings'||tab==='cookies'||tab==='new')return setTimeout(poll,5000);
-    fetch('/api/v1/tasks').then(r=>r.json()).then(d=>{
-      let stillRunning=false;
-      (d.items||[]).forEach(t=>{if(t.status==='running'||t.status==='queued')stillRunning=true;});
-      if(!stillRunning){location.reload();return;}
-      setTimeout(poll,5000);
-    }).catch(()=>setTimeout(poll,5000));
+    if(tab==='settings'||tab==='cookies'||tab==='new')return setTimeout(poll,8000);
+    fetch('/api/v1/health-summary').then(r=>r.json()).then(d=>{
+      const m=d.media||{};const t=d.tasks||{};
+      const hasActive=(t.running||0)>0||(t.queued||0)>0||(m.downloading||0)>0;
+      const hasFailed=(t.failed||0)>0||(m.failed||0)>0;
+      // Update activity river
+      const river=document.getElementById('activity-river');
+      if(river){
+        if(hasActive&&hasFailed)river.className='activity-river flowing has-errors';
+        else if(hasActive)river.className='activity-river flowing'+((t.running||0)>2?' flowing-fast':'');
+        else if(hasFailed)river.className='activity-river has-errors';
+        else river.className='activity-river idle';
+      }
+      // Update nav pulses
+      const mp=document.getElementById('nav-media-pulse');
+      if(mp){if((m.downloading||0)>0)mp.className='nav-pulse active';else if((m.failed||0)>0)mp.className='nav-pulse attention';else mp.className='nav-pulse settled';}
+      const tp=document.getElementById('nav-tasks-pulse');
+      const taskActive=(t.running||0)>0||(t.queued||0)>0;
+      const taskFailed=(t.failed||0)>0;
+      if(tp){if(taskActive)tp.className='nav-pulse active';else if(taskFailed)tp.className='nav-pulse attention';else tp.className='nav-pulse settled';}
+      // Update source card breathing — only when media is downloading
+      const mediaActive=(m.downloading||0)>0;
+      document.querySelectorAll('.source-card').forEach(c=>{if(mediaActive)c.classList.add('source-active');else c.classList.remove('source-active');});
+      // Reload only when transitioning from active to idle (work finished)
+      if(prevActive&&!hasActive){prevActive=false;setTimeout(()=>location.reload(),1500);return;}
+      prevActive=hasActive;
+      setTimeout(poll,hasActive?5000:15000);
+    }).catch(()=>setTimeout(poll,10000));
   }
-  setTimeout(poll,5000);
+  setTimeout(poll,3000);
 })();`
-	}
 
 	// ── Page template ─────────────────────────────────────────────────────────
 	page := `<!doctype html><html lang="en" data-theme="dark">
@@ -625,6 +654,8 @@ input,select,textarea,button{font-family:inherit}
   --badge-muted-bg:rgba(255,255,255,0.08);
   --tag-ch-bg:rgba(170,130,255,0.12);--tag-ch-border:rgba(170,130,255,0.15);--tag-ch-text:#c4b5fd;
   --font:'Roboto',system-ui,sans-serif;--btn-radius:999px;--card-radius:12px;--input-radius:999px;--select-radius:8px;
+  --ambient-warm:rgba(255,160,60,0.08);--ambient-glow-active:0 0 20px rgba(255,0,51,0.10),inset 0 0 20px rgba(255,0,51,0.03);
+  --ambient-glow-error:0 0 16px rgba(239,68,68,0.12);--thumb-failed-tint:rgba(239,68,68,0.25);
 }
 [data-theme="youtube-light"]{
   --bg:#ffffff;--surface:#f2f2f2;--surface-hover:#e8e8e8;--surface-glass:#f2f2f2;
@@ -641,6 +672,8 @@ input,select,textarea,button{font-family:inherit}
   --badge-muted-bg:rgba(0,0,0,0.05);
   --tag-ch-bg:rgba(120,80,220,0.08);--tag-ch-border:rgba(120,80,220,0.1);--tag-ch-text:#6d28d9;
   --font:'Roboto',system-ui,sans-serif;--btn-radius:999px;--card-radius:12px;--input-radius:999px;--select-radius:8px;
+  --ambient-warm:rgba(255,160,60,0.06);--ambient-glow-active:0 0 16px rgba(255,0,0,0.06),inset 0 0 16px rgba(255,0,0,0.02);
+  --ambient-glow-error:0 0 12px rgba(220,38,38,0.08);--thumb-failed-tint:rgba(220,38,38,0.18);
 }
 /* ── Classic "Obsidian Glass" ── */
 [data-theme="classic-dark"]{
@@ -658,6 +691,8 @@ input,select,textarea,button{font-family:inherit}
   --badge-muted-bg:rgba(30,41,59,0.6);
   --tag-ch-bg:rgba(167,139,250,0.1);--tag-ch-border:rgba(167,139,250,0.15);--tag-ch-text:#a78bfa;
   --font:'Inter',system-ui,sans-serif;--btn-radius:10px;--card-radius:16px;--input-radius:10px;--select-radius:10px;
+  --ambient-warm:rgba(59,130,246,0.06);--ambient-glow-active:0 0 20px rgba(59,130,246,0.12),inset 0 0 20px rgba(59,130,246,0.04);
+  --ambient-glow-error:0 0 16px rgba(239,68,68,0.12);--thumb-failed-tint:rgba(239,68,68,0.2);
 }
 [data-theme="classic-light"]{
   --bg:#f8fafc;--surface:#ffffff;--surface-hover:#f1f5f9;--surface-glass:rgba(255,255,255,0.85);
@@ -674,6 +709,8 @@ input,select,textarea,button{font-family:inherit}
   --badge-muted-bg:rgba(241,245,249,0.8);
   --tag-ch-bg:rgba(139,92,246,0.06);--tag-ch-border:rgba(139,92,246,0.1);--tag-ch-text:#6d28d9;
   --font:'Inter',system-ui,sans-serif;--btn-radius:10px;--card-radius:16px;--input-radius:10px;--select-radius:10px;
+  --ambient-warm:rgba(59,130,246,0.04);--ambient-glow-active:0 0 16px rgba(37,99,235,0.08),inset 0 0 16px rgba(37,99,235,0.02);
+  --ambient-glow-error:0 0 12px rgba(220,38,38,0.08);--thumb-failed-tint:rgba(220,38,38,0.15);
 }
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;transition:background 0.3s,color 0.3s,font-family 0.3s;letter-spacing:-0.01em}
 body::before{display:none}
@@ -771,6 +808,43 @@ tr:hover .row-actions{opacity:1}
 @keyframes shimmer{0%%{background-position:-200%% 0}100%%{background-position:200%% 0}}
 .badge-running,.badge-downloading{position:relative;overflow:hidden}
 .badge-running::after,.badge-downloading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,0,51,0.08),transparent);background-size:200%% 100%%;animation:shimmer 2s infinite}
+/* ── Proximal awareness ── */
+@keyframes breathe{0%%,100%%{box-shadow:var(--ambient-glow-active)}50%%{box-shadow:0 0 30px rgba(255,160,60,0.12),inset 0 0 30px rgba(255,160,60,0.04)}}
+@keyframes thumb-arriving{0%%,100%%{filter:saturate(0.5) brightness(0.85)}50%%{filter:saturate(0.7) brightness(1)}}
+@keyframes activity-flow{0%%{background-position:-200%% 0}100%%{background-position:200%% 0}}
+@keyframes nav-breathe{0%%,100%%{opacity:0.4}50%%{opacity:1}}
+.source-card.source-active{animation:breathe 3s ease-in-out infinite}
+.source-whisper{font-size:10px;color:var(--text-faint);opacity:0;transition:opacity 0.3s;font-family:'JetBrains Mono',ui-monospace,monospace}
+.source-card:hover .source-whisper{opacity:1}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* Thumbnail-as-status */
+.thumb-wrap.thumb-pending img{filter:saturate(0.35) brightness(0.7);transition:filter 0.6s}
+.thumb-wrap.thumb-downloading img{animation:thumb-arriving 2.5s ease-in-out infinite}
+.thumb-wrap.thumb-downloading::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);background-size:200%% 100%%;animation:shimmer 2s infinite;border-radius:8px;pointer-events:none}
+.thumb-wrap.thumb-done img{filter:none;transition:filter 0.6s}
+.thumb-wrap.thumb-failed{box-shadow:inset -3px -3px 0 var(--thumb-failed-tint)}
+.thumb-wrap.thumb-failed img{filter:saturate(0.6) brightness(0.9)}
+.thumb-wrap.thumb-missing{border:2px dashed var(--text-muted);opacity:0.35}
+.thumb-wrap.thumb-missing img{filter:saturate(0.15) brightness(0.5)}
+.media-hover-status{opacity:0;font-size:11px;color:var(--text-muted);transition:opacity 0.2s}
+.media-row:hover .media-hover-status{opacity:1}
+/* Activity river */
+.activity-river{height:3px;border-radius:2px;margin-bottom:16px;background:var(--border-subtle);overflow:hidden;transition:opacity 0.6s}
+.activity-river.flowing{background:linear-gradient(90deg,transparent,var(--primary),transparent);background-size:200%% 100%%;animation:activity-flow 2.5s linear infinite;opacity:0.6}
+.activity-river.flowing-fast{animation-duration:1.2s;opacity:0.8}
+.activity-river.has-errors{background:linear-gradient(90deg,transparent,var(--danger),var(--warning),transparent);background-size:200%% 100%%;animation:activity-flow 3s linear infinite}
+.activity-river.idle{opacity:0;height:1px}
+/* Task row atmosphere */
+tr[data-status="succeeded"] td{opacity:0.4;transition:opacity 0.3s}
+tr[data-status="succeeded"]:hover td{opacity:0.8}
+tr[data-status="running"]{box-shadow:inset 3px 0 0 var(--primary)}
+tr[data-status="failed"]{box-shadow:inset 3px 0 0 var(--danger)}
+tr[data-status="queued"] td{opacity:0.6}
+/* Sidebar activity dots */
+.nav-pulse{display:inline-block;width:6px;height:6px;border-radius:50%%;margin-left:auto;flex-shrink:0;background:var(--text-muted);opacity:0.3;transition:all 0.6s}
+.nav-pulse.active{background:var(--primary);opacity:1;animation:nav-breathe 2.5s ease-in-out infinite;box-shadow:0 0 8px rgba(255,0,51,0.3)}
+.nav-pulse.attention{background:var(--danger);opacity:1;animation:nav-breathe 1.5s ease-in-out infinite;box-shadow:0 0 8px rgba(239,68,68,0.4)}
+.nav-pulse.settled{background:var(--success);opacity:0.5}
 /* ── Empty state ── */
 /* ── Skeleton loader ── */
 .skeleton{border-radius:8px;background:linear-gradient(90deg,var(--surface) 25%%,var(--surface-hover) 50%%,var(--surface) 75%%);background-size:200%% 100%%;animation:skeleton-shimmer 1.5s infinite}
@@ -791,7 +865,7 @@ tr:hover .row-actions{opacity:1}
 .input-container{max-width:800px}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin:3px 0}
 /* ── Source cards ── */
-.source-card{background:var(--surface);border:1px solid var(--border-subtle);border-radius:var(--card-radius);padding:18px;margin-bottom:10px;transition:background 0.15s;cursor:default}
+.source-card{background:linear-gradient(135deg,var(--surface) 0%%,var(--surface) calc(100%% - var(--warmth,0%%)),var(--ambient-warm) 100%%);border:1px solid var(--border-subtle);border-radius:var(--card-radius);padding:18px;margin-bottom:10px;transition:background 0.8s,box-shadow 0.8s;cursor:default}
 .source-card:hover{background:var(--surface-hover)}
 .source-card:hover .card-actions{opacity:1;transform:translateY(0)}
 .source-card .card-actions{opacity:0;transform:translateY(6px);transition:all 0.25s ease;margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -901,8 +975,8 @@ tr:hover .row-actions{opacity:1}
   <div class="sidebar-section">
     <div class="sidebar-label">Main</div>
     <button class="nav-tab" id="tab-btn-sources" onclick="showTab('sources')"><span class="icon">&#9881;</span> <span class="nav-label">Sources</span> <span class="count">%d</span></button>
-    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span class="nav-label">Media</span> <span class="count">%d</span></button>
-    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span class="nav-label">Tasks</span> <span class="count">%d</span></button>
+    <button class="nav-tab" id="tab-btn-media" onclick="showTab('media')"><span class="icon">&#9654;</span> <span class="nav-label">Media</span> <span class="nav-pulse" id="nav-media-pulse" aria-label="%d media"></span></button>
+    <button class="nav-tab" id="tab-btn-tasks" onclick="showTab('tasks')"><span class="icon">&#9889;</span> <span class="nav-label">Tasks</span> <span class="nav-pulse" id="nav-tasks-pulse" aria-label="%d tasks"></span></button>
     <button class="nav-tab" id="tab-btn-schedules" onclick="showTab('schedules')"><span class="icon">&#128337;</span> <span class="nav-label">Schedules</span> <span class="count">%d</span></button>
   </div>
   <div class="sidebar-section">
@@ -1013,6 +1087,7 @@ tr:hover .row-actions{opacity:1}
 
 <div id="tab-tasks" class="tab-content">
   <h1 class="page-title">Tasks</h1>
+  <div class="activity-river" id="activity-river" aria-label="System activity"><span class="sr-only" id="activity-label">No active tasks</span></div>
   <div class="card">
     <div class="card-header"><span class="card-title">Tasks (%d)</span><div style="display:flex;gap:6px;flex-wrap:wrap"><select id="task-status-filter" onchange="filterTaskStatus(this.value)" style="font-size:12px;padding:3px 6px;width:auto"><option value="">All</option><option value="queued">Queued</option><option value="running">Running</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option></select> <button class="btn-sm btn-orange" title="Cancel all running tasks" onclick="withLoading(this,stopRunningTasks)">Stop running</button><button class="btn-sm btn-blue" title="Retry all failed download tasks" onclick="withLoading(this,retryAllFailed)">Retry failed</button><button class="btn-sm btn-gray" title="Remove all succeeded and failed tasks" onclick="withLoading(this,clearCompletedTasks)">Clear completed</button></div></div>
     <div class="table-wrap"><table>
@@ -1773,6 +1848,27 @@ window.onload=function(){
       fetch('/api/v1/cookies/validate',{method:'POST'}).catch(()=>{});
     }
   }).catch(()=>{});
+  // Init proximal awareness states
+  (function(){
+    const river=document.getElementById('activity-river');
+    if(river){
+      const rows=document.querySelectorAll('#tasks-tbody tr[data-status]');
+      let running=0,failed=0;
+      rows.forEach(r=>{if(r.dataset.status==='running')running++;if(r.dataset.status==='failed')failed++;});
+      if(running>0&&failed>0)river.className='activity-river flowing has-errors';
+      else if(running>0)river.className='activity-river flowing';
+      else if(failed>0)river.className='activity-river has-errors';
+      else river.className='activity-river idle';
+    }
+    const mp=document.getElementById('nav-media-pulse');
+    const tp=document.getElementById('nav-tasks-pulse');
+    const dlMedia=document.querySelectorAll('.media-row[data-status="downloading"]').length;
+    const failMedia=document.querySelectorAll('.media-row[data-status="failed"]').length;
+    if(mp){if(dlMedia>0)mp.className='nav-pulse active';else if(failMedia>0)mp.className='nav-pulse attention';else mp.className='nav-pulse settled';}
+    const runTasks=document.querySelectorAll('#tasks-tbody tr[data-status="running"]').length;
+    const failTasks=document.querySelectorAll('#tasks-tbody tr[data-status="failed"]').length;
+    if(tp){if(runTasks>0)tp.className='nav-pulse active';else if(failTasks>0)tp.className='nav-pulse attention';else tp.className='nav-pulse settled';}
+  })();
   // Init pagers
   initPager('sources-list','pager-sources',20);
   initPager('media-tbody','pager-media',20);
