@@ -86,7 +86,7 @@ Contents of `./data/` on the host:
 
 ## YouTube Cookies (Required)
 
-YouTube blocks automated downloads. Export cookies from your browser and either:
+YouTube blocks automated downloads. Export cookies from your browser **while logged in to YouTube** and either:
 
 1. **Upload via Web UI** — go to the Cookies tab, upload or paste your cookies
 2. **Copy to data directory** — save as `data/cookies.txt`, restart the container
@@ -120,3 +120,7 @@ Choose theme (YouTube 2026 or Classic), configure download templates, video qual
 
 - **GitHub**: [github.com/AC13139/ytvault](https://github.com/AC13139/ytvault)
 - **Issues**: [github.com/AC13139/ytvault/issues](https://github.com/AC13139/ytvault/issues)
+
+## License
+
+[GNU General Public License v3.0](https://github.com/AC13139/ytvault/blob/main/LICENSE)

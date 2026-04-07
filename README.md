@@ -27,30 +27,55 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 
 ---
 
-## Quick Start (Docker Hub)
+## Installation
 
-**Prerequisites:** Docker and Docker Compose.
+> **Docker is the recommended way to run YtVault.** The image includes all dependencies (yt-dlp, ffmpeg, Node.js, Python) pre-configured and supports `linux/amd64` and `linux/arm64`.
 
-```bash
-mkdir ytvault && cd ytvault
-curl -O https://raw.githubusercontent.com/AC13139/ytvault/main/docker-compose.prod.yml
-docker compose -f docker-compose.prod.yml up -d
+### Docker Compose (recommended)
+
+```yaml
+# docker-compose.yml
+services:
+  ytvault:
+    image: ac13139/ytvault:latest
+    ports:
+      - "${YTVAULT_PORT:-8080}:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
 ```
 
-Open **http://localhost:8080** in your browser. To pin a specific version:
-
 ```bash
-YTVAULT_VERSION=1.0.0 docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
 
-To use a custom port, set it in the compose command or create a `.env` file:
+Open **http://localhost:8080** in your browser.
+
+To pin a specific version:
+
+```yaml
+image: ac13139/ytvault:1.0.0
+```
+
+To use a custom port, create a `.env` file:
 
 ```bash
 # .env
 YTVAULT_PORT=9090
 ```
 
-### Build from Source
+### Docker Run
+
+```bash
+docker run -d \
+  --name ytvault \
+  -p 8080:8080 \
+  -v ./data:/data \
+  --restart unless-stopped \
+  ac13139/ytvault:latest
+```
+
+### Alternative: Build from Source
 
 ```bash
 git clone https://github.com/AC13139/ytvault.git
@@ -58,7 +83,7 @@ cd ytvault
 docker compose up --build -d
 ```
 
-### Running Locally (without Docker)
+### Alternative: Run without Docker
 
 **Prerequisites:** Go 1.26+, `yt-dlp`, `ffmpeg`, and `nodejs` on your PATH.
 
@@ -72,20 +97,20 @@ go run ./apps/api
 
 ## YouTube Cookies (Required)
 
-> **YouTube blocks automated downloads with bot detection.** You must provide a cookies file for YtVault to work. Without cookies, most index and download operations will fail with "Sign in to confirm you're not a bot."
+> **YouTube blocks automated downloads with bot detection.** You must provide cookies from a **logged-in** YouTube browser session. Without login cookies, most operations will fail with "Sign in to confirm you're not a bot" or "requires authentication" errors.
 
 ### How to Get Cookies
 
 **Chrome / Edge / Brave / Arc (Chromium browsers):**
 
 1. Install [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) extension
-2. Go to [youtube.com](https://www.youtube.com) and make sure you are logged in
+2. Go to [youtube.com](https://www.youtube.com) and **make sure you are logged in**
 3. Click the extension icon → Export → save the file
 
 **Firefox:**
 
 1. Install [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/) add-on
-2. Go to [youtube.com](https://www.youtube.com) and make sure you are logged in
+2. Go to [youtube.com](https://www.youtube.com) and **make sure you are logged in**
 3. Click the add-on → "Current Site" → save the file
 
 **Safari (macOS):**
@@ -94,7 +119,7 @@ go run ./apps/api
 2. Run: `yt-dlp --cookies-from-browser safari --cookies cookies.txt --skip-download https://www.youtube.com`
 3. This generates a `cookies.txt` file in the current directory
 
-### Setup for Docker / Web UI Users
+### Upload Cookies
 
 **Option A — Upload via Web UI (easiest):**
 
@@ -107,37 +132,23 @@ go run ./apps/api
 1. Copy `cookies.txt` to the `data/` directory on the host
 2. Restart the container: `docker compose restart`
 
-The app reads `YTVAULT_COOKIES_PATH` (default `/data/cookies.txt`).
-
-### Setup for API / CLI Users
-
-Set the `YTVAULT_COOKIES_PATH` environment variable when starting the server:
+**Option C — Upload via API:**
 
 ```bash
-YTVAULT_COOKIES_PATH=/path/to/cookies.txt go run ./apps/api
-```
-
-Or upload via API:
-
-```bash
-# Upload cookies file
 curl -X POST http://localhost:8080/api/v1/cookies \
   --data-binary @cookies.txt \
   -H 'Content-Type: text/plain'
 
-# Validate cookies
 curl -X POST http://localhost:8080/api/v1/cookies/validate
-
-# Check status
-curl http://localhost:8080/api/v1/cookies/status
 ```
 
 ### Notes
 
+- Cookies must be from a **logged-in** session — visitor-only cookies will not work
 - Cookies can be exported from **any machine** — they're not tied to the server
 - Cookies expire over time (weeks to months) — re-export when downloads start failing
 - For **age-restricted videos**: verify your age at [myaccount.google.com/birthday](https://myaccount.google.com/birthdayinfo), then re-export cookies
-- The Cookies tab in the Web UI shows validation status and will prompt you when cookies need refreshing
+- The Cookies tab shows validation status and warns when login cookies are missing
 
 ---
 
@@ -215,9 +226,9 @@ All settings are environment variables:
 | Variable | Default | Description |
 |---|---|---|
 | `YTVAULT_ADDR` | `:8080` | Listen address |
-| `YTVAULT_DATA_PATH` | `./data/state.json` | State file path |
-| `YTVAULT_DOWNLOAD_PATH` | `./data/downloads` | Download directory |
-| `YTVAULT_COOKIES_PATH` | `./data/cookies.txt` | Path to cookies file |
+| `YTVAULT_DATA_PATH` | `/data/state.json` | State file path |
+| `YTVAULT_DOWNLOAD_PATH` | `/data/downloads` | Download directory |
+| `YTVAULT_COOKIES_PATH` | `/data/cookies.txt` | Path to cookies file |
 
 **CLI:**
 

@@ -41,7 +41,6 @@ jobs:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/ytvault
           tags: |
             type=semver,pattern={{version}}
-            type=sha,prefix=
             type=raw,value=latest,enable={{is_default_branch}}
 
       - uses: docker/setup-qemu-action@v3
