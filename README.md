@@ -345,3 +345,9 @@ internal/
   yt/         YouTube URL normalisation
   ytdlp/      yt-dlp wrapper (index, download, search)
 ```
+
+---
+
+## License
+
+YtVault is licensed under the [GNU General Public License v3.0](LICENSE).
