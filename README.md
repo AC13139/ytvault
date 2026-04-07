@@ -348,6 +348,16 @@ internal/
 
 ---
 
+## Acknowledgments
+
+YtVault is built on these open-source projects:
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — video extraction (Unlicense)
+- [FFmpeg](https://github.com/FFmpeg/FFmpeg) — media processing (GPL-2.0-or-later)
+- [Go](https://github.com/golang/go) — language and runtime (BSD-3-Clause)
+- [Node.js](https://github.com/nodejs/node) — JavaScript runtime for yt-dlp (MIT)
+- [Python](https://github.com/python/cpython) — runtime for yt-dlp (PSF-2.0)
+
 ## License
 
 YtVault is licensed under the [GNU General Public License v3.0](LICENSE).
