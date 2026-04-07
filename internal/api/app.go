@@ -943,6 +943,7 @@ func (a *App) handleCookiesStatus(w http.ResponseWriter, _ *http.Request) {
 	if exists {
 		resp["size"] = size
 		resp["lastModified"] = modTime.UTC()
+		resp["hasLoginCookies"] = ytdlp.HasLoginCookies(a.cookiesPath)
 	}
 
 	// Return cached validation if fresh (5 min and same mtime)
@@ -1032,10 +1033,21 @@ func (a *App) handleCookiesUpload(w http.ResponseWriter, r *http.Request) {
 	a.cookiesValid = nil
 	a.cookiesMu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"message": "Cookies saved",
 		"size":    len(content),
-	})
+	}
+
+	// Check whether the cookies contain actual login session tokens
+	if !ytdlp.HasLoginCookies(a.cookiesPath) {
+		resp["warning"] = "These cookies do not contain YouTube login session tokens (SID, __Secure-1PSID, etc.). " +
+			"They appear to be visitor-only cookies. Make sure you are logged in to YouTube in your browser before exporting cookies."
+		resp["hasLoginCookies"] = false
+	} else {
+		resp["hasLoginCookies"] = true
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *App) handleCookiesDelete(w http.ResponseWriter, _ *http.Request) {

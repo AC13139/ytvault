@@ -36,6 +36,33 @@ func baseArgs() []string {
 	return args
 }
 
+// indexArgs returns baseArgs plus skip=authcheck for public content indexing.
+// This prevents false "requires authentication" errors when cookies are
+// visitor-only or expired. NOT used for ValidateCookies which needs authcheck.
+func indexArgs() []string {
+	args := baseArgs()
+	args = append(args, "--extractor-args", "youtubetab:skip=authcheck")
+	return args
+}
+
+// HasLoginCookies checks whether a cookie file contains YouTube login
+// session cookies (SID, __Secure-1PSID, etc.) vs just visitor cookies.
+func HasLoginCookies(cookiesFile string) bool {
+	data, err := os.ReadFile(cookiesFile)
+	if err != nil {
+		return false
+	}
+	text := string(data)
+	// These cookies are only set for logged-in YouTube sessions
+	for _, name := range []string{"SID", "HSID", "SSID", "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID"} {
+		// Match tab-separated cookie name (Netscape format: domain\tTRUE\t...\tNAME\tVALUE)
+		if strings.Contains(text, "\t"+name+"\t") {
+			return true
+		}
+	}
+	return false
+}
+
 // downloadArgs returns baseArgs plus download-specific flags.
 // Forces web player client for age-restricted video support.
 // Trims trailing whitespace from metadata fields to prevent filesystem issues.
@@ -159,7 +186,7 @@ func Index(url, dateAfter string) (string, string, []VideoInfo, error) {
 
 // indexFlat uses --flat-playlist -J (fast, no upload_date).
 func indexFlat(url string) (string, string, []VideoInfo, error) {
-	args := append(baseArgs(), "--flat-playlist", "-J", "--no-warnings", url)
+	args := append(indexArgs(), "--flat-playlist", "-J", "--no-warnings", url)
 	cmd := exec.Command("yt-dlp", args...)
 	out, err := cmd.Output()
 	if err != nil {
@@ -295,7 +322,7 @@ func dateFilterToLimit(dateAfter string) int {
 // video count (YouTube lists newest first).
 func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, error) {
 	limit := dateFilterToLimit(dateAfter)
-	args := append(baseArgs(),
+	args := append(indexArgs(),
 		"--flat-playlist", "-J", "--no-warnings",
 		"--playlist-items", fmt.Sprintf("1:%d", limit),
 		url,
@@ -358,7 +385,7 @@ func FetchPosterURL(url string) (string, error) {
 	if strings.Contains(url, "/@") || strings.Contains(url, "/channel/") || strings.Contains(url, "/c/") || strings.Contains(url, "/user/") {
 		url = strings.TrimRight(url, "/") + "/videos"
 	}
-	args := append(baseArgs(),
+	args := append(indexArgs(),
 		"--flat-playlist", "-J", "--no-warnings",
 		"--playlist-items", "1:1", // just 1 entry — fast, but still returns root metadata
 		url,
@@ -388,7 +415,7 @@ func FetchPosterURL(url string) (string, error) {
 // than the cutoff. This is slower but required because --flat-playlist doesn't
 // provide upload_date for --dateafter to filter.
 func indexWithDateFilter(url, dateAfter string) (string, string, []VideoInfo, error) {
-	args := append(baseArgs(),
+	args := append(indexArgs(),
 		"--no-warnings",
 		"--skip-download",
 		"--print-json",

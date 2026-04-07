@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"ytvault/internal/models"
+	"ytvault/internal/ytdlp"
 )
 
 // ── Badge / tag helpers ───────────────────────────────────────────────────────
@@ -200,13 +201,14 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool,
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
-func (a *App) cookieStatusForUI() (exists bool, sizeStr string, modTimeStr string, validStatus string, validClass string) {
+func (a *App) cookieStatusForUI() (exists bool, sizeStr string, modTimeStr string, validStatus string, validClass string, hasLogin bool) {
 	ex, size, modTime := a.cookiesFileInfo()
 	if !ex {
-		return false, "", "", "Missing", "badge-failed"
+		return false, "", "", "Missing", "badge-failed", false
 	}
 	sizeStr = fmt.Sprintf("%.1f KB", float64(size)/1024)
 	modTimeStr = modTime.UTC().Format("2006-01-02 15:04 UTC")
+	hasLogin = ytdlp.HasLoginCookies(a.cookiesPath)
 
 	a.cookiesMu.Lock()
 	v := a.cookiesValid
@@ -215,12 +217,12 @@ func (a *App) cookieStatusForUI() (exists bool, sizeStr string, modTimeStr strin
 	a.cookiesMu.Unlock()
 
 	if v == nil {
-		return true, sizeStr, modTimeStr, "Not tested", "badge-pending"
+		return true, sizeStr, modTimeStr, "Not tested", "badge-pending", hasLogin
 	}
 	if *v {
-		return true, sizeStr, modTimeStr, "Valid", "badge-succeeded"
+		return true, sizeStr, modTimeStr, "Valid", "badge-succeeded", hasLogin
 	}
-	return true, sizeStr, modTimeStr, "Expired / Invalid", "badge-failed"
+	return true, sizeStr, modTimeStr, "Expired / Invalid", "badge-failed", hasLogin
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
@@ -1114,6 +1116,7 @@ tr[data-status="queued"] td{opacity:0.6}
 
 <div id="tab-cookies" class="tab-content">
   <h1 class="page-title">Cookie Management</h1>
+  %s
   <div class="card">
     <div class="card-header"><span class="card-title">Cookie Status</span></div>
     <div style="display:grid;grid-template-columns:140px 1fr;gap:8px 16px;font-size:13px;margin-bottom:14px">
@@ -1124,7 +1127,7 @@ tr[data-status="queued"] td{opacity:0.6}
     </div>
     <button class="btn-sm btn-blue" onclick="validateCookies()" id="ck-test-btn">Test Now</button>
     <span id="ck-test-result" class="src-meta" style="margin-left:8px"></span>
-    <p style="color:#64748b;font-size:11px;margin-top:10px">Cookies contain your YouTube session. Only upload on a trusted network.</p>
+    <p style="color:#64748b;font-size:11px;margin-top:10px">Cookies must be from a <strong>logged-in</strong> YouTube session. Anonymous/visitor cookies will not work for most features. Only upload on a trusted network.</p>
   </div>
 
   <div class="card">
@@ -1176,8 +1179,13 @@ tr[data-status="queued"] td{opacity:0.6}
           <li>Upload the generated <code>cookies.txt</code> file above</li>
         </ol>
       </details>
+      <p class="src-meta" style="margin-top:12px;padding:8px 12px;background:var(--badge-muted-bg);border-radius:8px;line-height:1.6">
+        <strong>Important:</strong> You must be <strong>logged in to YouTube</strong> in your browser before exporting cookies.
+        Visitor cookies (not logged in) will cause "authentication required" and "captcha" errors.
+        After exporting, click <strong>Test Now</strong> above to verify the cookies work.
+        Cookies expire over time (usually weeks to months) — re-export when downloads start failing.
+      </p>
       <p class="src-meta" style="margin-top:8px">For more details see the <a href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp" target="_blank" style="color:#60a5fa">yt-dlp cookie guide</a>.</p>
-      <p class="src-meta" style="margin-top:4px">Cookies expire over time (usually weeks to months). If downloads start failing, re-export a fresh cookies file.</p>
     </div>
   </div>
 </div>
@@ -1738,12 +1746,13 @@ async function uploadCookies(){
     const res=await fetch('/api/v1/cookies',opts);
     const data=await res.json();
     if(res.ok){
-      toast('Cookies saved — validating…','ok');
+      if(data.warning){toast(data.warning,'err');setTimeout(()=>location.reload(),3000);}
+      else{toast('Cookies saved — validating…','ok');
       fetch('/api/v1/cookies/validate',{method:'POST'}).then(r=>r.json()).then(d=>{
         if(d.valid)toast('Cookies are valid!','ok');
         else toast('Cookies may be expired: '+(d.message||''),'err');
       }).catch(()=>{});
-      setTimeout(()=>location.reload(),2000);
+      setTimeout(()=>location.reload(),2000);}
     }else{
       st.textContent=data.error?.message||'Upload failed';st.style.color='#fca5a5';
       toast('Failed: '+(data.error?.message||'unknown'),'err');
@@ -1893,7 +1902,7 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 	addDateAfterOpts := buildDateAfterOptions("")
 
 	// Cookie status for nav badge and cookies tab
-	ckExists, ckSize, ckMtime, ckStatus, ckClass := a.cookieStatusForUI()
+	ckExists, ckSize, ckMtime, ckStatus, ckClass, ckHasLogin := a.cookieStatusForUI()
 	// Status dot for sidebar: ok=green, warn/pending=amber, failed=red
 	dotClass := "err"
 	if ckClass == "badge-succeeded" {
@@ -1901,9 +1910,21 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 	} else if ckClass == "badge-pending" {
 		dotClass = "warn"
 	}
+	// Warn if cookies exist but lack login tokens
+	if ckExists && !ckHasLogin {
+		dotClass = "warn"
+	}
 	ckNavBadge := fmt.Sprintf(`<span class="status-dot %s" title="%s"></span>`, dotClass, html.EscapeString(ckStatus))
 	ckPathDisplay := html.EscapeString(a.cookiesPath)
 	ckStatusBadge := fmt.Sprintf(`<span class="badge %s">%s</span>`, ckClass, html.EscapeString(ckStatus))
+	// Login cookie warning banner
+	ckLoginWarning := ""
+	if ckExists && !ckHasLogin {
+		ckLoginWarning = `<div style="background:#78350f;border:1px solid #d97706;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#fde68a">` +
+			`<strong>&#9888; Not logged in</strong> — These cookies are from an anonymous YouTube session (no SID, __Secure-1PSID, etc.). ` +
+			`Many features (age-restricted videos, private playlists, higher rate limits) require login cookies. ` +
+			`<strong>Log in to YouTube in your browser first</strong>, then re-export cookies.</div>`
+	}
 	if !ckExists {
 		ckSize = "—"
 		ckMtime = "—"
@@ -1917,6 +1938,7 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
 		len(tasks), strings.Join(taskRows, ""),                         // tasks tab
 		len(schedules), strings.Join(schedRows, ""),                    // schedules tab
+		ckLoginWarning,                                                  // cookies tab: login warning banner
 		ckStatusBadge, ckPathDisplay, ckSize, ckMtime,                  // cookies tab: status, path, size, mtime
 		autoRefreshJS,                                                   // auto-refresh if running tasks
 	)))
