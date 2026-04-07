@@ -64,12 +64,11 @@ func HasLoginCookies(cookiesFile string) bool {
 }
 
 // downloadArgs returns baseArgs plus download-specific flags.
-// Forces web player client for age-restricted video support.
+// Uses default player client (less likely to trigger captcha than web).
 // Trims trailing whitespace from metadata fields to prevent filesystem issues.
 func downloadArgs() []string {
 	args := baseArgs()
 	args = append(args,
-		"--extractor-args", "youtube:player_client=web",
 		// Trim trailing spaces from uploader/channel names (e.g. "王志安 " → "王志安")
 		"--replace-in-metadata", "uploader,channel", "\\s+$", "",
 	)
@@ -129,6 +128,13 @@ func (p probeResult) bestPosterURL() string {
 		return p.Thumbnail
 	}
 	return ""
+}
+
+func truncErr(s string) string {
+	if len(s) > 100 {
+		return s[:100] + "…"
+	}
+	return s
 }
 
 func (p probeResult) channelName() string {
@@ -477,6 +483,10 @@ func indexWithDateFilter(url, dateAfter string) (string, string, []VideoInfo, er
 // Download downloads a single video to outputDir using yt-dlp.
 // filenameTemplate and videoFormat can be empty to use defaults.
 // Returns the path of the downloaded file.
+//
+// Uses a two-attempt strategy: first with the default player client (less
+// likely to trigger captcha), then with player_client=web as fallback for
+// age-restricted videos or captcha failures.
 func Download(ctx context.Context, videoURL, outputDir, filenameTemplate, videoFormat string) (string, error) {
 	if filenameTemplate == "" {
 		filenameTemplate = "%(uploader,channel,id)s/%(title)s [%(id)s].%(ext)s"
@@ -485,21 +495,50 @@ func Download(ctx context.Context, videoURL, outputDir, filenameTemplate, videoF
 		videoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
 	}
 	template := filepath.Join(outputDir, filenameTemplate)
-	args := append(downloadArgs(),
+
+	commonArgs := []string{
 		"-f", videoFormat,
 		"--merge-output-format", "mp4",
 		"--no-warnings",
 		"--print", "after_move:filepath",
+		"--socket-timeout", "30",
+		"--retries", "3",
 		"-o", template,
-	)
-	args = append(args, videoURL)
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+		videoURL,
+	}
+
+	// Attempt 1: default player client (android/ios — lower captcha risk)
+	args1 := append(downloadArgs(), commonArgs...)
+	cmd := exec.CommandContext(ctx, "yt-dlp", args1...)
 	out, err := cmd.Output()
 	if err != nil {
+		stderr1 := ""
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return "", fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr.Stderr)))
+			stderr1 = strings.TrimSpace(string(exitErr.Stderr))
 		}
-		return "", fmt.Errorf("yt-dlp exec: %w", err)
+		// If captcha or age-restricted, retry with web player client only
+		if strings.Contains(stderr1, "captcha") || strings.Contains(stderr1, "age-restricted") || strings.Contains(stderr1, "confirm your age") || strings.Contains(stderr1, "Sign in") {
+			log.Printf("ytdlp: first attempt failed (%s), retrying with web player client", truncErr(stderr1))
+			args2 := append(baseArgs(),
+				"--extractor-args", "youtube:player_client=web",
+				"--replace-in-metadata", "uploader,channel", "\\s+$", "",
+			)
+			args2 = append(args2, commonArgs...)
+			cmd2 := exec.CommandContext(ctx, "yt-dlp", args2...)
+			out2, err2 := cmd2.Output()
+			if err2 != nil {
+				if exitErr2, ok := err2.(*exec.ExitError); ok {
+					return "", fmt.Errorf("yt-dlp: %s", strings.TrimSpace(string(exitErr2.Stderr)))
+				}
+				return "", fmt.Errorf("yt-dlp exec: %w", err2)
+			}
+			out = out2
+		} else {
+			if stderr1 != "" {
+				return "", fmt.Errorf("yt-dlp: %s", stderr1)
+			}
+			return "", fmt.Errorf("yt-dlp exec: %w", err)
+		}
 	}
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
