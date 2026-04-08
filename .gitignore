@@ -1,21 +1,40 @@
+# Environment
 .env
 .env.*
+
+# Build artifacts
 node_modules/
 dist/
 build/
 bin/
+bin/api
+bin/cli
 coverage/
 .tmp/
+tmp/
 *.log
+*.pid
+*.out
+
+# Python
 __pycache__/
 .pytest_cache/
 .venv/
-bin/api
-bin/cli
+
+# Runtime data
 data/
-tmp/
-*.pid
-*.out
-CLAUDE.md
 cookies.txt
+
+# Docker overrides
 docker-compose.override.yml
+
+# AI assistant configs (Claude, Codex, Cursor, Aider, Copilot)
+CLAUDE.md
+.claude/
+.codex/
+.codex-config.json
+.cursorrules
+.cursorignore
+.aider*
+.copilot/
+.github/copilot/
