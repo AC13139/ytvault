@@ -258,6 +258,143 @@ func (s *Store) CreateSource(kind models.SourceKind, profile yt.SourceProfile, d
 	return src, task, nil
 }
 
+// SanitizeCollectionName cleans user input for use as a collection title
+// and download folder name. Strips path separators, traversal patterns,
+// and control characters.
+func SanitizeCollectionName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	name = strings.ReplaceAll(name, "..", "_")
+	// Strip control characters (< 0x20) except space
+	var b strings.Builder
+	for _, r := range name {
+		if r >= 0x20 {
+			b.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// CreateCollection creates a new empty collection source (user-curated playlist).
+// No index task is created — videos are added individually via AddVideoToCollection.
+func (s *Store) CreateCollection(name string) (models.Source, error) {
+	name = SanitizeCollectionName(name)
+	if name == "" {
+		return models.Source{}, fmt.Errorf("collection name cannot be empty")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	src := models.Source{
+		ID:        fmt.Sprintf("src_%d", s.nextID),
+		Kind:      models.SourceKindCollection,
+		URL:       "",
+		Title:     name,
+		Locator:   fmt.Sprintf("local_%d", s.nextID),
+		Status:    models.SourceStatusActive,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.nextID++
+	s.state.Sources = append(s.state.Sources, src)
+	if err := s.saveLocked(); err != nil {
+		return models.Source{}, err
+	}
+	return src, nil
+}
+
+// ListCollections returns all collection sources, sorted by title.
+func (s *Store) ListCollections() []models.Source {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var cols []models.Source
+	for _, src := range s.state.Sources {
+		if src.Kind == models.SourceKindCollection {
+			cols = append(cols, src)
+		}
+	}
+	return cols
+}
+
+// AddVideoToCollection adds a single video as a MediaItem under a collection source.
+// Returns the created MediaItem and an optional download Task (if autoDownload is true).
+// Rejects duplicates by VideoID within the same collection.
+func (s *Store) AddVideoToCollection(collectionID, videoID, videoTitle, videoURL, channel string, duration int, uploadDate *time.Time, autoDownload bool) (models.MediaItem, *models.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Validate collection exists
+	var col *models.Source
+	for i := range s.state.Sources {
+		if s.state.Sources[i].ID == collectionID && s.state.Sources[i].Kind == models.SourceKindCollection {
+			col = &s.state.Sources[i]
+			break
+		}
+	}
+	if col == nil {
+		return models.MediaItem{}, nil, fmt.Errorf("collection %s not found", collectionID)
+	}
+
+	// Duplicate check by VideoID within this collection
+	maxIndex := 0
+	for _, m := range s.state.MediaItems {
+		if m.SourceID != collectionID {
+			continue
+		}
+		if m.VideoID == videoID {
+			return models.MediaItem{}, nil, fmt.Errorf("video %s already exists in this collection", videoID)
+		}
+		if m.PlaylistIndex > maxIndex {
+			maxIndex = m.PlaylistIndex
+		}
+	}
+
+	now := time.Now().UTC()
+	item := models.MediaItem{
+		ID:            fmt.Sprintf("media_%d", s.nextMedia),
+		SourceID:      collectionID,
+		VideoID:       videoID,
+		Title:         videoTitle,
+		Channel:       channel,
+		URL:           videoURL,
+		Duration:      duration,
+		PlaylistIndex: maxIndex + 1,
+		UploadDate:    uploadDate,
+		Status:        models.MediaItemStatusPending,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	s.nextMedia++
+	s.state.MediaItems = append(s.state.MediaItems, item)
+
+	// Update collection timestamp
+	col.UpdatedAt = now
+
+	var taskPtr *models.Task
+	if autoDownload {
+		task := models.Task{
+			ID:         fmt.Sprintf("task_%d", s.nextTask),
+			Type:       "download",
+			EntityType: "media",
+			EntityID:   item.ID,
+			Status:     models.TaskStatusQueued,
+			CreatedAt:  now,
+		}
+		s.nextTask++
+		s.state.Tasks = append([]models.Task{task}, s.state.Tasks...)
+		taskPtr = &task
+	}
+
+	if err := s.saveLocked(); err != nil {
+		return models.MediaItem{}, nil, err
+	}
+	return item, taskPtr, nil
+}
+
 // UpdateSourceTitle updates a source's display title with the real name
 // returned by yt-dlp after indexing (e.g. the actual channel or playlist name).
 func (s *Store) UpdateSourceTitle(id, title string) error {

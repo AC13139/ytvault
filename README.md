@@ -15,6 +15,7 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 ## Features
 
 - **Sources** — add YouTube channels, playlists, or single videos by URL
+- **Collections** — group individual videos into custom local playlists
 - **YouTube search** — search YouTube directly from the app to discover content
 - **Indexing** — scans a source with `yt-dlp` and stores all video metadata
 - **Downloading** — downloads video+audio merged to MP4 via `ffmpeg`
@@ -31,7 +32,7 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 
 > **Docker is the recommended way to run YtVault.** The image includes all dependencies (yt-dlp, ffmpeg, Node.js, Python) pre-configured and supports `linux/amd64` and `linux/arm64`.
 >
-> **Tip:** For production use, pin a specific version tag (e.g. `ac13139/ytvault:1.0.0`) instead of `:latest`. The `:latest` tag updates on every commit to `main` and may contain unreleased changes.
+> **Tip:** For production use, pin a specific version tag (e.g. `ac13139/ytvault:1.1.0`) instead of `:latest`. The `:latest` tag updates on every commit to `main` and may contain unreleased changes.
 
 ### Docker Compose (recommended)
 
@@ -39,7 +40,7 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 # docker-compose.yml
 services:
   ytvault:
-    image: ac13139/ytvault:1.0.0  # pin version for stability; use :latest for newest
+    image: ac13139/ytvault:1.1.0  # pin version for stability; use :latest for newest
     ports:
       - "${YTVAULT_PORT:-8080}:8080"
     volumes:
@@ -56,7 +57,7 @@ Open **http://localhost:8080** in your browser.
 To pin a specific version:
 
 ```yaml
-image: ac13139/ytvault:1.0.0
+image: ac13139/ytvault:1.1.0
 ```
 
 To use a custom port, create a `.env` file:
@@ -275,6 +276,14 @@ yd task run <task_id>                    # stub-complete a queued task
 | `PUT` | `/api/v1/sources/{id}/retention` | Set retention policy |
 | `GET` | `/api/v1/sources/{id}/cleanup-preview` | Preview cleanup |
 | `POST` | `/api/v1/sources/{id}/cleanup` | Run cleanup |
+
+### Collections
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/v1/collections` | List all collections |
+| `POST` | `/api/v1/collections` | Create a new collection |
+| `POST` | `/api/v1/collections/{id}/items` | Add a video to a collection |
 
 ### Media
 

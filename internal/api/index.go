@@ -170,6 +170,23 @@ func buildActionsCell(sourceID string, kind models.SourceKind, hasSchedule bool,
 			sid, posterBtn, sid,
 		)
 	}
+	if kind == models.SourceKindCollection {
+		// Collections: no reindex, no schedule. Poster + retention + cleanup + remove.
+		return fmt.Sprintf(
+			`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">`+
+				`%s`+
+				`</div>`+
+				`<div style="display:flex;gap:6px;align-items:center;margin-top:6px">`+
+				`<span class="src-meta" style="font-size:11px">Retention:</span>`+
+				`%s`+
+				`<button class="btn-sm btn-gray" title="Delete old downloaded media based on retention" onclick="cleanupSource('%s')">Clean up</button>`+
+				` <button class="btn-sm btn-orange" title="Remove this collection and all its media" onclick="deleteSource(this,'%s')">Remove</button>`+
+				`</div>`,
+			posterBtn,
+			buildRetentionSelect(sourceID, retentionDays),
+			sid, sid,
+		)
+	}
 	schedBtn := ""
 	if !hasSchedule {
 		schedBtn = fmt.Sprintf(
@@ -266,6 +283,8 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			kindClass = "tag-channel"
 		} else if s.Kind == models.SourceKindPlaylist {
 			kindClass = "tag-playlist"
+		} else if s.Kind == models.SourceKindCollection {
+			kindClass = "tag-playlist" // reuse playlist color for collections
 		}
 
 		// Determine if source is active (any downloading media or running tasks)
@@ -281,6 +300,15 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			activeClass = " source-active"
 		}
 
+		// URL line: hide for collections (no YouTube URL)
+		urlLine := fmt.Sprintf(
+			`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`,
+			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
+		)
+		if s.Kind == models.SourceKindCollection {
+			urlLine = ""
+		}
+
 		sourceRows = append(sourceRows, fmt.Sprintf(
 			`<div class="source-card%s" data-progress="%d" style="display:flex;gap:14px">`+
 				`<img class="source-poster" src="/api/v1/sources/%s/poster" onerror="this.style.display='none'" style="width:52px;height:52px;border-radius:50%%;object-fit:cover;flex-shrink:0">`+
@@ -290,7 +318,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 				`<span class="source-count">%d indexed · %d downloaded</span>`+
 				`<button class="btn-sm btn-blue" onclick="viewMedia('%s')" style="flex-shrink:0">View</button>`+
 				`</div>`+
-				`<a href="%s" target="_blank" class="source-url" title="%s">%s</a>`+
+				`%s`+
 				`<div class="source-progress%s"><div class="source-progress-fill" style="width:%d%%"></div></div>`+
 				`<div class="card-actions">%s</div>`+
 				`</div></div>`,
@@ -300,7 +328,7 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			kindClass, html.EscapeString(string(s.Kind)),
 			mediaCount, doneCount,
 			html.EscapeString(s.ID),
-			html.EscapeString(s.URL), html.EscapeString(s.URL), html.EscapeString(s.URL),
+			urlLine,
 			func() string { if isActive { return " source-progress-active" }; return "" }(), pct,
 			buildActionsCell(s.ID, s.Kind,
 				func() bool { _, ok := schedBySource[s.ID]; return ok }(),
@@ -1025,6 +1053,18 @@ tr[data-status="queued"] td{opacity:0.6}
       <label>Date filter</label>
       <select id="add-dateafter">%s</select>
     </div>
+    <div id="collection-wrap" style="display:none" class="form-row">
+      <label>Add to</label>
+      <select id="collection-select" onchange="onCollectionChange()">
+        <option value="">Standalone video</option>
+        %s
+        <option value="__new__">+ New collection...</option>
+      </select>
+    </div>
+    <div id="new-collection-wrap" style="display:none" class="form-row">
+      <label>Collection name</label>
+      <input type="text" id="new-collection-name" placeholder="My Playlist Name">
+    </div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
       <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-secondary);cursor:pointer">
         <input type="checkbox" id="auto-download" style="width:auto;margin:0" checked> Auto-download after scan
@@ -1327,11 +1367,24 @@ function onKindChange(kind){
   document.getElementById('add-dateafter-wrap').style.display=isMulti?'':'none';
   const sw=document.getElementById('new-sched-wrap');
   if(sw)sw.style.display=isMulti?'':'none';
+  // Show collection dropdown for videos only
+  const cw=document.getElementById('collection-wrap');
+  if(cw)cw.style.display=(kind==='video')?'':'none';
+  if(kind!=='video'){
+    const cs=document.getElementById('collection-select');
+    if(cs)cs.value='';
+    const nw=document.getElementById('new-collection-wrap');
+    if(nw)nw.style.display='none';
+  }
   const badge=document.getElementById('detected-kind');
   if(badge){
     badge.textContent=kind;
     badge.className='badge badge-'+(kind==='video'?'pending':kind==='channel'?'queued':'succeeded');
   }
+}
+function onCollectionChange(){
+  const v=document.getElementById('collection-select').value;
+  document.getElementById('new-collection-wrap').style.display=(v==='__new__')?'':'none';
 }
 function autoDetectKind(){
   const url=document.getElementById('url').value.trim().toLowerCase();
@@ -1396,11 +1449,18 @@ async function submitForm(){
   const dateAfter=(kind!=='video'&&dateAfterEl)?dateAfterEl.value:'';
   const st=document.getElementById('add-status');
   if(!url){st.textContent='Please enter a URL';st.style.color='#fca5a5';return;}
-  st.textContent='Adding...';st.style.color='#94a3b8';
+  // Collection support: include collectionId/collectionName for videos
+  const colSel=document.getElementById('collection-select');
+  const collectionId=(kind==='video'&&colSel)?colSel.value:'';
+  const collectionName=(collectionId==='__new__')?(document.getElementById('new-collection-name').value.trim()):'';
+  if(collectionId==='__new__'&&!collectionName){st.textContent='Please enter a collection name';st.style.color='#fca5a5';return;}
+  st.textContent=collectionId?'Adding to collection…':'Adding...';st.style.color='#94a3b8';
   try{
     const autoDownload=document.getElementById('auto-download').checked;
     const body={kind,url,autoDownload};
     if(dateAfter)body.dateAfter=dateAfter;
+    if(collectionId)body.collectionId=collectionId;
+    if(collectionName)body.collectionName=collectionName;
     const res=await fetch('/api/v1/sources',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(res.ok){
@@ -1901,6 +1961,16 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 
 	addDateAfterOpts := buildDateAfterOptions("")
 
+	// Build collection options for the "Add to" dropdown
+	collections := a.store.ListCollections()
+	var collectionOpts strings.Builder
+	for _, c := range collections {
+		collectionOpts.WriteString(fmt.Sprintf(
+			`<option value="%s">%s</option>`,
+			html.EscapeString(c.ID), html.EscapeString(c.Title),
+		))
+	}
+
 	// Cookie status for nav badge and cookies tab
 	ckExists, ckSize, ckMtime, ckStatus, ckClass, ckHasLogin := a.cookieStatusForUI()
 	// Status dot for sidebar: ok=green, warn/pending=amber, failed=red
@@ -1934,6 +2004,7 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 		len(sources), len(allMedia), len(tasks), len(schedules),         // sidebar counts
 		ckNavBadge,                                                       // cookies badge in sidebar
 		addDateAfterOpts,                                                // add-source date filter options
+		collectionOpts.String(),                                          // collection dropdown options
 		len(sources), strings.Join(sourceRows, ""),                      // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
 		len(tasks), strings.Join(taskRows, ""),                         // tasks tab

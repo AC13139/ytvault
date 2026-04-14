@@ -5,9 +5,10 @@ import "time"
 type SourceKind string
 
 const (
-	SourceKindChannel  SourceKind = "channel"
-	SourceKindPlaylist SourceKind = "playlist"
-	SourceKindVideo    SourceKind = "video"
+	SourceKindChannel    SourceKind = "channel"
+	SourceKindPlaylist   SourceKind = "playlist"
+	SourceKindVideo      SourceKind = "video"
+	SourceKindCollection SourceKind = "collection"
 )
 
 type SourceStatus string

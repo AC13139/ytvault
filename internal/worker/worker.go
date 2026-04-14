@@ -249,16 +249,17 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	}
 
 	cfg := w.store.GetConfig()
-	// Use playlist-specific template if the source is a playlist
+	// Use playlist-specific template if the source is a playlist or collection
 	tmpl := cfg.FilenameTemplate
-	if src, ok := w.store.GetSource(item.SourceID); ok && src.Kind == models.SourceKindPlaylist {
+	if src, ok := w.store.GetSource(item.SourceID); ok && (src.Kind == models.SourceKindPlaylist || src.Kind == models.SourceKindCollection) {
 		tmpl = cfg.PlaylistTemplate
 	}
 	// Replace playlist-specific template vars — yt-dlp doesn't have playlist
 	// context when downloading individual video URLs
 	if src, ok := w.store.GetSource(item.SourceID); ok {
-		// Replace playlist_title with the source name (playlist or channel name)
-		tmpl = strings.Replace(tmpl, "%(playlist_title,uploader,channel,id)s", src.Title, 1)
+		// Sanitize title for path safety (critical for user-named collections)
+		title := store.SanitizeCollectionName(src.Title)
+		tmpl = strings.Replace(tmpl, "%(playlist_title,uploader,channel,id)s", title, 1)
 	}
 	if item.PlaylistIndex > 0 {
 		tmpl = strings.Replace(tmpl, "%(playlist_index)03d", fmt.Sprintf("%03d", item.PlaylistIndex), 1)

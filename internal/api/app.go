@@ -94,6 +94,9 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/health-summary", a.handleHealthSummary)
 	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
 	mux.HandleFunc("GET /api/v1/youtube/probe", a.handleYouTubeProbe)
+	mux.HandleFunc("GET /api/v1/collections", a.handleListCollections)
+	mux.HandleFunc("POST /api/v1/collections", a.handleCreateCollection)
+	mux.HandleFunc("POST /api/v1/collections/{id}/items", a.handleAddToCollection)
 	mux.HandleFunc("GET /api/v1/cookies/status", a.handleCookiesStatus)
 	mux.HandleFunc("POST /api/v1/cookies", a.handleCookiesUpload)
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
@@ -105,10 +108,12 @@ func (a *App) Routes() http.Handler {
 // ── Source handlers ───────────────────────────────────────────────────────────
 
 type createSourceRequest struct {
-	Kind         string `json:"kind"`
-	URL          string `json:"url"`
-	DateAfter    string `json:"dateAfter,omitempty"`
-	AutoDownload bool   `json:"autoDownload,omitempty"`
+	Kind           string `json:"kind"`
+	URL            string `json:"url"`
+	DateAfter      string `json:"dateAfter,omitempty"`
+	AutoDownload   bool   `json:"autoDownload,omitempty"`
+	CollectionID   string `json:"collectionId,omitempty"`   // assign video to existing collection
+	CollectionName string `json:"collectionName,omitempty"` // create new collection (when collectionId == "__new__")
 }
 
 type createSourceResponse struct {
@@ -134,7 +139,14 @@ func (a *App) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
 		return
 	}
+
+	// If a video is being added to a collection, route to collection flow
 	kind := models.SourceKind(req.Kind)
+	if kind == models.SourceKindVideo && req.CollectionID != "" {
+		a.addVideoToCollectionFromCreate(w, req)
+		return
+	}
+
 	profile, err := yt.NormalizeSource(req.URL, kind)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_source", err.Error())
@@ -146,6 +158,73 @@ func (a *App) handleCreateSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, createSourceResponse{Source: src, Task: task})
+}
+
+// addVideoToCollectionFromCreate handles the "add video to collection" path
+// from the create source endpoint.
+func (a *App) addVideoToCollectionFromCreate(w http.ResponseWriter, req createSourceRequest) {
+	// Create new collection if requested
+	collectionID := req.CollectionID
+	if collectionID == "__new__" {
+		if req.CollectionName == "" {
+			writeError(w, http.StatusBadRequest, "missing_name", "collection name is required")
+			return
+		}
+		col, err := a.store.CreateCollection(req.CollectionName)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
+			return
+		}
+		collectionID = col.ID
+	}
+
+	// Normalize the video URL to get canonical video ID
+	profile, err := yt.NormalizeSource(req.URL, models.SourceKindVideo)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_url", err.Error())
+		return
+	}
+
+	// Synchronous probe: index the single video to get metadata
+	_, _, videos, err := ytdlp.Index(profile.NormalizedURL, "")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "index_failed", "failed to fetch video info: "+err.Error())
+		return
+	}
+	if len(videos) == 0 {
+		writeError(w, http.StatusBadGateway, "index_failed", "no video info returned")
+		return
+	}
+	v := videos[0]
+
+	// Parse upload date
+	var uploadDate *time.Time
+	if v.UploadDate != "" {
+		if t, err := time.Parse("20060102", v.UploadDate); err == nil {
+			uploadDate = &t
+		}
+	}
+
+	item, task, err := a.store.AddVideoToCollection(collectionID, v.ID, v.Title, v.URL, v.Channel, v.Duration, uploadDate, req.AutoDownload)
+	if err != nil {
+		writeError(w, http.StatusConflict, "add_failed", err.Error())
+		return
+	}
+
+	// Auto-start download task if created
+	if task != nil {
+		a.worker.StartTask(task.ID)
+	}
+
+	col, _ := a.store.GetSource(collectionID)
+	resp := map[string]any{
+		"source": col,
+		"media":  item,
+	}
+	if task != nil {
+		resp["task"] = *task
+	}
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (a *App) handleListSourceMedia(w http.ResponseWriter, r *http.Request) {
@@ -211,6 +290,90 @@ func (a *App) handleReindex(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"task": started})
 }
 
+// ── Collection handlers ──────────────────────────────────────────────────────
+
+func (a *App) handleListCollections(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": a.store.ListCollections()})
+}
+
+func (a *App) handleCreateCollection(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
+		return
+	}
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "missing_name", "name is required")
+		return
+	}
+	col, err := a.store.CreateCollection(req.Name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"source": col})
+}
+
+func (a *App) handleAddToCollection(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		URL          string `json:"url"`
+		AutoDownload bool   `json:"autoDownload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
+		return
+	}
+	if req.URL == "" {
+		writeError(w, http.StatusBadRequest, "missing_url", "url is required")
+		return
+	}
+
+	// Normalize URL to canonical video ID
+	profile, err := yt.NormalizeSource(req.URL, models.SourceKindVideo)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_url", err.Error())
+		return
+	}
+
+	// Synchronous probe
+	_, _, videos, err := ytdlp.Index(profile.NormalizedURL, "")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "index_failed", "failed to fetch video info: "+err.Error())
+		return
+	}
+	if len(videos) == 0 {
+		writeError(w, http.StatusBadGateway, "index_failed", "no video info returned")
+		return
+	}
+	v := videos[0]
+
+	var uploadDate *time.Time
+	if v.UploadDate != "" {
+		if t, err := time.Parse("20060102", v.UploadDate); err == nil {
+			uploadDate = &t
+		}
+	}
+
+	item, task, err := a.store.AddVideoToCollection(id, v.ID, v.Title, v.URL, v.Channel, v.Duration, uploadDate, req.AutoDownload)
+	if err != nil {
+		writeError(w, http.StatusConflict, "add_failed", err.Error())
+		return
+	}
+
+	if task != nil {
+		a.worker.StartTask(task.ID)
+	}
+
+	resp := map[string]any{"media": item}
+	if task != nil {
+		resp["task"] = *task
+	}
+	writeJSON(w, http.StatusCreated, resp)
+}
+
 // ── Schedule handlers ─────────────────────────────────────────────────────────
 
 type setScheduleRequest struct {
@@ -236,6 +399,11 @@ func (a *App) handleGetSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleSetSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Collections cannot be scheduled (manually curated)
+	if src, ok := a.store.GetSource(id); ok && src.Kind == models.SourceKindCollection {
+		writeError(w, http.StatusBadRequest, "not_schedulable", "collections cannot be scheduled — add videos manually")
+		return
+	}
 	var req setScheduleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON")
