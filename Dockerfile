@@ -3,12 +3,16 @@ FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
+ARG COMMIT=unknown
 
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -o /app/ytvault-api ./apps/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath \
+    -ldflags "-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
+    -o /app/ytvault-api ./apps/api
 
 # ── Runtime stage ──────────────────────────────────────────────────────────────
 FROM python:3.12-slim

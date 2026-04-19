@@ -10,13 +10,20 @@ import (
 	"ytvault/internal/api"
 )
 
+// Build-time version metadata. Populated via -ldflags:
+//   go build -ldflags "-X main.Version=1.2.3 -X main.Commit=abc1234"
+var (
+	Version = "dev"
+	Commit  = "unknown"
+)
+
 func main() {
 	addr := getenv("YTVAULT_ADDR", ":8080")
 	dataPath := getenv("YTVAULT_DATA_PATH", "./data/state.json")
 	downloadDir := getenv("YTVAULT_DOWNLOAD_PATH", "./data/downloads")
 	cookiesPath := getenv("YTVAULT_COOKIES_PATH", "./data/cookies.txt")
 
-	app, err := api.NewApp(dataPath, downloadDir, cookiesPath)
+	app, err := api.NewApp(dataPath, downloadDir, cookiesPath, Version, Commit)
 	if err != nil {
 		log.Fatalf("init app: %v", err)
 	}

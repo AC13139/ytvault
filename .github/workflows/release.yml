@@ -44,6 +44,18 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=beta,enable=${{ github.ref == 'refs/heads/dev' }}
 
+      - name: Resolve build metadata
+        id: buildmeta
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
+            echo "version=beta-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+          fi
+          echo "commit=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
@@ -60,6 +72,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            COMMIT=${{ steps.buildmeta.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

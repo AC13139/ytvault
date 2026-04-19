@@ -25,16 +25,18 @@ type App struct {
 	scheduler   *scheduler.Scheduler
 	cookiesPath string
 	downloadDir string
+	version     string
+	commit      string
 
 	// Cached cookie validation result
 	cookiesMu         sync.Mutex
-	cookiesValid      *bool  // nil = not tested
+	cookiesValid      *bool // nil = not tested
 	cookiesValidMsg   string
 	cookiesValidAt    time.Time
 	cookiesValidMtime time.Time
 }
 
-func NewApp(dataPath, downloadDir, cookiesPath string) (*App, error) {
+func NewApp(dataPath, downloadDir, cookiesPath, version, commit string) (*App, error) {
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create download dir %s: %w", downloadDir, err)
 	}
@@ -45,7 +47,15 @@ func NewApp(dataPath, downloadDir, cookiesPath string) (*App, error) {
 	w := worker.New(s, downloadDir)
 	sc := scheduler.New(s, w)
 	sc.Start()
-	return &App{store: s, worker: w, scheduler: sc, cookiesPath: cookiesPath, downloadDir: downloadDir}, nil
+	return &App{
+		store:       s,
+		worker:      w,
+		scheduler:   sc,
+		cookiesPath: cookiesPath,
+		downloadDir: downloadDir,
+		version:     version,
+		commit:      commit,
+	}, nil
 }
 
 // Close stops background goroutines. Call on server shutdown.
@@ -92,6 +102,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/config", a.handleGetConfig)
 	mux.HandleFunc("PUT /api/v1/config", a.handleUpdateConfig)
 	mux.HandleFunc("GET /api/v1/health-summary", a.handleHealthSummary)
+	mux.HandleFunc("GET /api/v1/version", a.handleVersion)
 	mux.HandleFunc("GET /api/v1/youtube/search", a.handleYouTubeSearch)
 	mux.HandleFunc("GET /api/v1/youtube/probe", a.handleYouTubeProbe)
 	mux.HandleFunc("GET /api/v1/collections", a.handleListCollections)
@@ -126,6 +137,13 @@ func (a *App) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"status":    "ok",
 		"service":   "ytvault-api",
 		"timestamp": time.Now().UTC(),
+	})
+}
+
+func (a *App) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version": a.version,
+		"commit":  a.commit,
 	})
 }
 
