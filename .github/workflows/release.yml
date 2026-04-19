@@ -2,10 +2,10 @@ name: Build and Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ["v*.*.*"]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -42,6 +42,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=beta,enable=${{ github.ref == 'refs/heads/dev' }}
 
       - uses: docker/setup-qemu-action@v3
 
@@ -63,6 +64,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Update Docker Hub description
+        if: github.ref == 'refs/heads/main'
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
