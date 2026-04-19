@@ -1311,6 +1311,38 @@ tr[data-status="queued"] td{opacity:0.6}
       <span id="cfg-status" class="src-meta" style="margin-left:8px"></span>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">About</span></div>
+    <div class="about-meta" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-weight:600;font-size:16px;color:var(--text)">YtVault</span>
+      <span id="about-version" class="mono-sm" style="background:var(--badge-muted-bg);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-family:monospace;font-size:12px;color:var(--text-secondary)">…</span>
+    </div>
+    <div class="src-meta" style="font-size:11px;margin-bottom:12px">commit <span id="about-commit" class="mono-sm" style="font-family:monospace">…</span></div>
+    <div class="about-links" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+      <a class="btn-sm btn-gray about-link" href="https://github.com/AC13139/ytvault" target="_blank" rel="noopener noreferrer" title="Star on GitHub" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        Star on GitHub
+      </a>
+      <a class="btn-sm btn-gray about-link" href="https://hub.docker.com/r/ac13139/ytvault" target="_blank" rel="noopener noreferrer" title="Pull on Docker Hub" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+        Pull on Docker Hub
+      </a>
+      <a class="btn-sm btn-gray about-link" href="https://github.com/AC13139/ytvault/issues/new" target="_blank" rel="noopener noreferrer" title="Report an issue" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        Report an issue
+      </a>
+      <a class="btn-sm btn-gray about-link" href="https://github.com/AC13139/ytvault/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" title="GPL-3.0 License" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        GPL-3.0 License
+      </a>
+    </div>
+    <div class="about-pull" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="src-meta" style="font-size:12px">Run the current release:</span>
+      <code id="about-pull-cmd" class="mono-sm" style="background:var(--badge-muted-bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-family:monospace;font-size:12px;color:var(--text)">docker pull ac13139/ytvault:latest</code>
+      <button id="about-copy-btn" class="btn-sm btn-gray" onclick="copyPullCmd(this)" title="Copy to clipboard">Copy</button>
+    </div>
+  </div>
 </div>
 
 </div>
@@ -1348,7 +1380,36 @@ function showTab(name){
   if(c)c.classList.add('active');
   if(b)b.classList.add('active');
   location.hash=name;
-  if(name==='settings')loadConfig();
+  if(name==='settings'){loadConfig();loadAbout();}
+}
+async function loadAbout(){
+  try{
+    const res=await fetch('/api/v1/version');
+    if(!res.ok)return;
+    const d=await res.json();
+    const version=d.version||'unknown';
+    const commit=d.commit||'unknown';
+    // Display version with v-prefix for semver, otherwise as-is (dev-xxx, beta-xxx)
+    const display=(/^\d+\.\d+\.\d+/.test(version))?'v'+version:version;
+    document.getElementById('about-version').textContent=display;
+    document.getElementById('about-commit').textContent=commit;
+    // Docker pull command: use version for tagged releases, "latest" for dev/beta
+    const pullTag=(/^\d+\.\d+\.\d+/.test(version))?version:'latest';
+    document.getElementById('about-pull-cmd').textContent='docker pull ac13139/ytvault:'+pullTag;
+  }catch(e){/* leave placeholders */}
+}
+function copyPullCmd(btn){
+  const txt=document.getElementById('about-pull-cmd').textContent;
+  const orig=btn.textContent;
+  const restore=()=>{btn.textContent=orig;};
+  const ok=()=>{btn.textContent='Copied';setTimeout(restore,1500);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(ok).catch(()=>{
+      const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');ok();}catch(_){restore();}ta.remove();
+    });
+  }else{
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');ok();}catch(_){restore();}ta.remove();
+  }
 }
 function toast(msg,type){
   const d=document.createElement('div');
