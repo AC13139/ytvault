@@ -1,0 +1,53 @@
+name: CI
+
+# Quality gates for pull requests: formatting, vet, race-enabled tests, build.
+# The release workflow runs its own test job before publishing images.
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: fmt / vet / test / build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Test (race)
+        run: go test -race -count=1 ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Build with version injection
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -X main.Version=ci -X main.Commit=${GITHUB_SHA::7}" \
+            -o /tmp/ytvault-api ./apps/api
+          go build -trimpath -o /tmp/yd ./apps/cli

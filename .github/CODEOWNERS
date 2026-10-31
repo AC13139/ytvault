@@ -1,0 +1,21 @@
+# Code owners for this repository.
+# Owners are automatically requested for review on any pull request that
+# touches a matching path.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repository.
+*                           @AC13139
+
+# Build, release and CI configuration — changes here affect what gets published.
+.github/                   @AC13139
+Dockerfile                 @AC13139
+docker-compose.yml         @AC13139
+docker-compose.prod.yml    @AC13139
+
+# Security policy and secret-handling configuration.
+SECURITY.md                @AC13139
+
+# Core application code.
+apps/                      @AC13139
+internal/                  @AC13139

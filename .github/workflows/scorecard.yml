@@ -1,0 +1,48 @@
+name: Scorecard Supply-Chain Security
+
+# OpenSSF Scorecard — measures how well the project follows supply-chain
+# security practices (branch protection, pinned dependencies, signed releases).
+# Free for public repositories.
+# https://github.com/ossf/scorecard/blob/main/docs/checks.md
+
+on:
+  branch_protection_rule:
+    types: [created, updated, deleted]
+  schedule:
+    # Daily, 04:41 UTC.
+    - cron: "41 4 * * *"
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: true
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          sarif_file: scorecard.sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Scorecard results
+          path: results.sarif
+          retention-days: 5
