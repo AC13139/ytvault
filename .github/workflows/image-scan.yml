@@ -1,0 +1,66 @@
+name: Image Scan
+
+# Vulnerability scan of the published container image.
+#
+# CodeQL covers the Go source, govulncheck covers the Go standard library,
+# and Dependabot covers the Dockerfile's FROM lines. None of them look at
+# what actually ends up inside the image: the Debian packages from
+# `apt-get install ffmpeg wget nodejs`, or the Python packages yt-dlp
+# pulls in. Trivy does.
+#
+# The image is scanned as published, so there is no rebuild here.
+
+on:
+  workflow_run:
+    workflows: ["Build and Release", "Refresh Image"]
+    types: [completed]
+  schedule:
+    # Wednesdays, 04:07 UTC — catches advisories published since the last
+    # image build.
+    - cron: "7 4 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan published image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only scan when the publishing workflow actually succeeded; otherwise
+    # there is no new image to look at.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ vars.YTVAULT_IMAGE || 'ac13139/ytvault:latest' }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+
+      - name: Upload results
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: trivy-results
+          path: trivy-results.sarif
+          retention-days: 7
+
+      - name: Fail on critical findings
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ vars.YTVAULT_IMAGE || 'ac13139/ytvault:latest' }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "1"

@@ -404,6 +404,7 @@ Every push and pull request runs:
 | Dependency review | [`dependency-review-action`](https://github.com/actions/dependency-review-action) |
 | Formatting / vet / tests | `gofmt`, `go vet`, `go test -race` |
 | Dependency updates | [Dependabot](https://docs.github.com/en/code-security/dependabot) (Actions, Docker, Go) |
+| Container image CVEs | [Trivy](https://github.com/aquasecurity/trivy) scan of the published image |
 | Secret detection | [Secret scanning](https://docs.github.com/en/code-security/secret-scanning) + push protection |
 | Supply-chain posture | [OpenSSF Scorecard](https://github.com/ossf/scorecard) |
 
