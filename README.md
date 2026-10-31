@@ -239,12 +239,16 @@ All settings are environment variables:
 | `YTVAULT_DATA_PATH` | `/data/state.json` | State file path |
 | `YTVAULT_DOWNLOAD_PATH` | `/data/downloads` | Download directory |
 | `YTVAULT_COOKIES_PATH` | `/data/cookies.txt` | Path to cookies file |
+| `YTVAULT_AUTH_USER` | *(unset)* | HTTP Basic auth user. Requires `YTVAULT_AUTH_PASSWORD` too |
+| `YTVAULT_AUTH_PASSWORD` | *(unset)* | HTTP Basic auth password. Requires `YTVAULT_AUTH_USER` too |
 
 **CLI:**
 
 | Variable | Default | Description |
 |---|---|---|
 | `YTVAULT_API` | `http://127.0.0.1:8080` | API base URL |
+| `YTVAULT_AUTH_USER` | *(unset)* | Username for HTTP Basic auth |
+| `YTVAULT_AUTH_PASSWORD` | *(unset)* | Password for HTTP Basic auth |
 
 ---
 
@@ -379,14 +383,25 @@ internal/
 
 ## Security
 
-> ⚠️ **YtVault has no built-in authentication.** Every API endpoint — including
-> destructive ones like creating sources, triggering downloads, and uploading
-> cookies — is open to anyone who can reach the port.
+> ⚠️ **YtVault has no authentication by default.** Every API endpoint —
+> including destructive ones like creating sources, triggering downloads, and
+> uploading cookies — is open to anyone who can reach the port.
 >
-> **Run it on a trusted network only.** Do not expose port 8080 to the internet.
-> Put it behind an authenticating reverse proxy (Caddy/nginx/Traefik) with TLS,
-> bind it to localhost with `YTVAULT_ADDR=127.0.0.1:8080`, or reach it over a
-> VPN.
+> **Turn it on.** Set `YTVAULT_AUTH_USER` and `YTVAULT_AUTH_PASSWORD` to put
+> the whole API behind HTTP Basic auth. The browser prompts once and the web
+> UI needs no changes; the CLI picks up the same two variables. `/healthz`
+> stays open so container healthchecks keep working.
+>
+> ```
+> environment:
+>   YTVAULT_AUTH_USER: admin
+>   YTVAULT_AUTH_PASSWORD: choose-a-long-random-password
+> ```
+>
+> Without it, **run YtVault on a trusted network only** — do not expose port
+> 8080 to the internet. Put it behind an authenticating reverse proxy
+> (Caddy/nginx/Traefik) with TLS, bind it to localhost with
+> `YTVAULT_ADDR=127.0.0.1:8080`, or reach it over a VPN.
 
 Your `cookies.txt` is a **logged-in YouTube session** — treat it as a password.
 

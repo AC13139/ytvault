@@ -15,11 +15,15 @@ docker run -d \
 
 Open **http://localhost:8080** in your browser.
 
-> ⚠️ **Security notice:** YtVault has **no built-in authentication**. Anyone who
-> can reach port 8080 can drive the API and upload cookies. Run it on a trusted
-> network only — bind to localhost, put it behind an authenticating reverse
-> proxy with TLS, or reach it over a VPN. Do not publish the port to the
-> internet.
+> ⚠️ **Security notice:** YtVault has **no authentication by default**. Anyone who
+> can reach port 8080 can drive the API and upload cookies.
+>
+> **Set `YTVAULT_AUTH_USER` and `YTVAULT_AUTH_PASSWORD`** to put the whole API
+> behind HTTP Basic auth — the browser prompts once, the web UI needs no
+> changes, and the CLI picks up the same two variables. If you leave them
+> unset, run YtVault on a trusted network only: bind to localhost, put it
+> behind an authenticating reverse proxy with TLS, or reach it over a VPN. Do
+> not publish the port to the internet.
 >
 > `data/cookies.txt` is a **logged-in YouTube session** — treat it as a
 > password. Details: [SECURITY.md](https://github.com/AC13139/ytvault/blob/main/SECURITY.md)
@@ -41,6 +45,9 @@ services:
       YTVAULT_DATA_PATH: /data/state.json
       YTVAULT_DOWNLOAD_PATH: /data/downloads
       YTVAULT_COOKIES_PATH: /data/cookies.txt
+      # Uncomment to require HTTP Basic auth on every route except /healthz.
+      # YTVAULT_AUTH_USER: admin
+      # YTVAULT_AUTH_PASSWORD: change-me
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
@@ -74,6 +81,8 @@ image: ac13139/ytvault:1.0.0
 | `YTVAULT_DATA_PATH` | `/data/state.json` | State file path |
 | `YTVAULT_DOWNLOAD_PATH` | `/data/downloads` | Download directory |
 | `YTVAULT_COOKIES_PATH` | `/data/cookies.txt` | Path to cookies file |
+| `YTVAULT_AUTH_USER` | *(unset)* | HTTP Basic auth user. Requires `YTVAULT_AUTH_PASSWORD` too |
+| `YTVAULT_AUTH_PASSWORD` | *(unset)* | HTTP Basic auth password. Requires `YTVAULT_AUTH_USER` too |
 
 ## Volumes
 

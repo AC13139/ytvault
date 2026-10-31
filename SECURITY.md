@@ -55,11 +55,33 @@ policy.
 
 ## Security Model — Read This Before Exposing YtVault
 
-**YtVault has no built-in authentication or authorization.** Every endpoint —
-including destructive ones like creating sources, triggering downloads, and
-uploading cookies — is reachable by anyone who can reach the port.
+**Authentication is off by default.** Every endpoint — including destructive
+ones like creating sources, triggering downloads, and uploading cookies — is
+reachable by anyone who can reach the port.
 
-This is intentional for a self-hosted LAN appliance, but it means:
+### Turn on authentication
+
+Set both variables and every route except `/healthz` requires HTTP Basic
+credentials:
+
+```yaml
+environment:
+  YTVAULT_AUTH_USER: admin
+  YTVAULT_AUTH_PASSWORD: choose-a-long-random-password
+```
+
+The browser handles Basic auth natively: it prompts once and then attaches
+the credentials to every request, so the web UI needs no changes. The CLI
+reads the same two variables (`YTVAULT_AUTH_USER`, `YTVAULT_AUTH_PASSWORD`).
+
+Both variables must be set — a user with no password would lock everyone
+out, so a half-configured instance stays unauthenticated and logs a warning
+at startup.
+
+Cross-origin requests that mutate state are rejected, so a page on another
+site cannot drive the API using the credentials the browser has cached.
+
+### If you leave it off
 
 - ❌ **Do not expose port 8080 to the public internet.**
 - ❌ **Do not run YtVault on a shared host or a network with untrusted clients.**
@@ -101,9 +123,10 @@ uploaded through the web UI. Treat it as a password:
 
 The following are **not** treated as vulnerabilities:
 
-- **Lack of authentication on the HTTP API.** See the security model above. The
-  documented deployment is behind a trusted network or an authenticating
-  reverse proxy.
+- **Lack of authentication on the HTTP API when `YTVAULT_AUTH_USER` and
+  `YTVAULT_AUTH_PASSWORD` are unset.** See the security model above. Set them
+  to enable HTTP Basic auth, or deploy behind a trusted network or an
+  authenticating reverse proxy.
 - **The upstream `yt-dlp`, FFmpeg, Node.js, and Python toolchain.** These are
   third-party components; report their bugs upstream. Dependabot tracks the
   base images in the Dockerfile; `yt-dlp`, FFmpeg, and Node.js are installed
@@ -125,7 +148,8 @@ or a **less-privileged user** escalate beyond what they should reach, including:
   volume).
 - SSRF where a request parameter selects the destination host.
 - XSS in the server-rendered UI or its inline JavaScript.
-- Authentication or authorization bypass in the reverse-proxy-documented model.
+- Authentication bypass when `YTVAULT_AUTH_USER` and `YTVAULT_AUTH_PASSWORD`
+  are set.
 - Secrets, tokens, or cookies leaked into logs, images, or the git history.
 
 ## Project Security Controls
@@ -142,6 +166,7 @@ The repository uses GitHub's free-tier security services:
 | Private vulnerability reporting | Enabled in repository settings — private, non-public disclosure channel |
 | OpenSSF Scorecard | Tracks supply-chain security posture over time |
 | Pinned action SHAs | Prevents mutable-tag hijacking of third-party actions |
+| Outbound request guard | Resolved-IP validation on user-supplied URLs — no cloud metadata, no private network |
 | Branch protection on `main` | Enabled as a repository ruleset — requires PRs and passing status checks |
 
 Security-relevant changes should also be reviewed with the `code-reviewer` and
