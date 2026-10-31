@@ -1,3 +1,6 @@
+# Build, not run: a bare `make` must not start a server that never exits.
+.DEFAULT_GOAL := build
+
 run-api:
 	go run ./apps/api
 

@@ -51,6 +51,13 @@ jobs:
           languages: ${{ matrix.language }}
           # security-extended adds framework-specific queries on top of the default set.
           queries: security-extended
+          # Build explicitly. CodeQL's autobuilder runs bare `make`, and the
+          # Makefile's first target starts the API server, which never exits —
+          # the job then hangs until the timeout cancels it.
+          build-mode: manual
+
+      - name: Build
+        run: go build ./...
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
