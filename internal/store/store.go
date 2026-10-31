@@ -123,7 +123,9 @@ func (s *Store) saveLocked() error {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	// 0600: the state file lists every source, media path and task, so it
+	// is only readable by the user running YtVault.
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.path)
@@ -1046,6 +1048,11 @@ func (s *Store) HealthSummary() map[string]map[string]int {
 
 const DefaultVideoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best"
 
+// MaxConcurrentLimit caps how many yt-dlp processes may run at once. Each
+// one buffers a whole video in memory before merging, so an unbounded
+// value would exhaust the host.
+const MaxConcurrentLimit = 8
+
 // Folder naming presets (yt-dlp output template fragments)
 var FolderPresets = map[string]string{
 	"channel":       "%(uploader,channel,id)s",
@@ -1126,6 +1133,9 @@ func (s *Store) GetConfig() models.Config {
 	}
 	if c.MaxConcurrent < 1 {
 		c.MaxConcurrent = 1
+	}
+	if c.MaxConcurrent > MaxConcurrentLimit {
+		c.MaxConcurrent = MaxConcurrentLimit
 	}
 	return c
 }
