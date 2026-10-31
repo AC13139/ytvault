@@ -40,7 +40,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/ytvault
+          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ytvault
           tags: |
             type=raw,value=latest
 
@@ -80,6 +80,6 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
-          subject-name: ${{ secrets.DOCKERHUB_USERNAME }}/ytvault
+          subject-name: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/ytvault
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true

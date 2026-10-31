@@ -8,11 +8,12 @@ published version only. Users should pin a version tag rather than tracking
 
 | Version | Supported | Notes |
 |---|---|---|
-| `main` / latest tag | ✅ | Receives security fixes |
+| Latest published tag (currently `v1.1.0`) | ✅ | Receives security fixes |
 | `dev` / `:beta` | ❌ | Development branch; no guarantees |
-| `< latest tag` | ❌ | Upgrade to the latest tag |
+| Older tags | ❌ | Upgrade to the latest tag |
 
-Check the latest release at <https://github.com/AC13139/ytvault/releases>.
+Check the available tags at <https://github.com/AC13139/ytvault/tags>.
+Official releases are Git tags; the repository does not publish GitHub Releases.
 
 ## Reporting a Vulnerability
 
@@ -22,10 +23,8 @@ Report privately via GitHub's private vulnerability reporting:
 
 > <https://github.com/AC13139/ytvault/security/advisories/new>
 
-If that form is unavailable, open a regular issue that contains **only** a
-non-sensitive description and request a private channel, or use the
-[private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories)
-flow directly.
+Private vulnerability reporting is enabled for this repository, so the form
+above is always available.
 
 Please include:
 
@@ -106,8 +105,9 @@ The following are **not** treated as vulnerabilities:
   documented deployment is behind a trusted network or an authenticating
   reverse proxy.
 - **The upstream `yt-dlp`, FFmpeg, Node.js, and Python toolchain.** These are
-  third-party components; report their bugs upstream. We track them through
-  Dependabot and rebuild images on a schedule.
+  third-party components; report their bugs upstream. Dependabot tracks the
+  base images in the Dockerfile; `yt-dlp`, FFmpeg, and Node.js are installed
+  unpinned at build time and pick up new versions on each image rebuild.
 - **YouTube's own anti-bot / captcha behaviour.** It is a property of the
   upstream service, not a YtVault defect.
 - **Denial of service by an operator who already controls the host** (e.g.
@@ -136,13 +136,13 @@ The repository uses GitHub's free-tier security services:
 |---|---|
 | CodeQL (`security-extended`) | Static analysis of Go code on every push and PR |
 | `govulncheck` | Scans the Go standard library and module graph for known CVEs |
-| Dependency Review | Blocks vulnerable or license-incompatible additions in PRs |
+| Dependency Review | Blocks vulnerable additions in PRs (no licence allow/deny list configured) |
 | Dependabot | Weekly updates for GitHub Actions, Docker base images, and Go modules |
-| Secret scanning + push protection | Blocks and reports committed secrets |
-| Private vulnerability reporting | Private, non-public disclosure channel |
+| Secret scanning + push protection | Enabled in repository settings — blocks and reports committed secrets |
+| Private vulnerability reporting | Enabled in repository settings — private, non-public disclosure channel |
 | OpenSSF Scorecard | Tracks supply-chain security posture over time |
 | Pinned action SHAs | Prevents mutable-tag hijacking of third-party actions |
-| Branch protection on `main` | Requires PRs and passing status checks |
+| Branch protection on `main` | Enabled as a repository ruleset — requires PRs and passing status checks |
 
 Security-relevant changes should also be reviewed with the `code-reviewer` and
 `security-reviewer` agents before merge, per the project's `CLAUDE.md`.
