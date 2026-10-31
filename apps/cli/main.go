@@ -94,7 +94,7 @@ func handleTask(base string, args []string) {
 }
 
 func get(url string) {
-	resp, err := http.Get(url)
+	resp, err := doRequest(http.MethodGet, url, nil)
 	must(err)
 	defer resp.Body.Close()
 	copyBody(resp.Body)
@@ -103,10 +103,26 @@ func get(url string) {
 func post(url string, body any) {
 	buf, err := json.Marshal(body)
 	must(err)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(buf))
+	resp, err := doRequest(http.MethodPost, url, bytes.NewReader(buf))
 	must(err)
 	defer resp.Body.Close()
 	copyBody(resp.Body)
+}
+
+// doRequest sends a request, attaching Basic credentials when the server
+// asks for them.
+func doRequest(method, url string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if user := getenv("YTVAULT_AUTH_USER", ""); user != "" {
+		req.SetBasicAuth(user, getenv("YTVAULT_AUTH_PASSWORD", ""))
+	}
+	return http.DefaultClient.Do(req)
 }
 
 func copyBody(r io.Reader) {

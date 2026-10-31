@@ -10,6 +10,9 @@ services:
       YTVAULT_DATA_PATH: /data/state.json
       YTVAULT_DOWNLOAD_PATH: /data/downloads
       YTVAULT_COOKIES_PATH: /data/cookies.txt
+      # Uncomment to require HTTP Basic auth on every route except /healthz.
+      # YTVAULT_AUTH_USER: admin
+      # YTVAULT_AUTH_PASSWORD: change-me
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]

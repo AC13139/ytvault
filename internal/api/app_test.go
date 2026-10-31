@@ -12,7 +12,13 @@ import (
 
 func newTestApp(t *testing.T) *App {
 	t.Helper()
-	app, err := NewApp(filepath.Join(t.TempDir(), "state.json"), t.TempDir(), filepath.Join(t.TempDir(), "cookies.txt"), "test", "test")
+	app, err := NewApp(Config{
+		DataPath:    filepath.Join(t.TempDir(), "state.json"),
+		DownloadDir: t.TempDir(),
+		CookiesPath: filepath.Join(t.TempDir(), "cookies.txt"),
+		Version:     "test",
+		Commit:      "test",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

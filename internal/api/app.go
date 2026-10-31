@@ -28,6 +28,7 @@ type App struct {
 	downloadDir string
 	version     string
 	commit      string
+	auth        *basicAuth
 
 	// Cached cookie validation result
 	cookiesMu         sync.Mutex
@@ -37,25 +38,39 @@ type App struct {
 	cookiesValidMtime time.Time
 }
 
-func NewApp(dataPath, downloadDir, cookiesPath, version, commit string) (*App, error) {
-	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
-		return nil, fmt.Errorf("create download dir %s: %w", downloadDir, err)
+// Config holds the settings App needs at construction time.
+type Config struct {
+	DataPath    string
+	DownloadDir string
+	CookiesPath string
+	Version     string
+	Commit      string
+	// AuthUser and AuthPassword enable HTTP Basic authentication when
+	// both are set. Leaving them empty keeps the API unauthenticated.
+	AuthUser     string
+	AuthPassword string
+}
+
+func NewApp(cfg Config) (*App, error) {
+	if err := os.MkdirAll(cfg.DownloadDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create download dir %s: %w", cfg.DownloadDir, err)
 	}
-	s, err := store.New(dataPath)
+	s, err := store.New(cfg.DataPath)
 	if err != nil {
 		return nil, err
 	}
-	w := worker.New(s, downloadDir)
+	w := worker.New(s, cfg.DownloadDir)
 	sc := scheduler.New(s, w)
 	sc.Start()
 	return &App{
 		store:       s,
 		worker:      w,
 		scheduler:   sc,
-		cookiesPath: cookiesPath,
-		downloadDir: downloadDir,
-		version:     version,
-		commit:      commit,
+		cookiesPath: cfg.CookiesPath,
+		downloadDir: cfg.DownloadDir,
+		version:     cfg.Version,
+		commit:      cfg.Commit,
+		auth:        newBasicAuth(cfg.AuthUser, cfg.AuthPassword),
 	}, nil
 }
 
@@ -114,7 +129,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
 	mux.HandleFunc("POST /api/v1/cookies/validate", a.handleCookiesValidate)
 	mux.HandleFunc("GET /", a.handleIndex)
-	return withSecurityHeaders(withJSONLogging(mux))
+	return withSecurityHeaders(withJSONLogging(a.auth.middleware(mux)))
 }
 
 // ── Source handlers ───────────────────────────────────────────────────────────

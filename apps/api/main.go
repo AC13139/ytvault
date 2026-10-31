@@ -24,9 +24,30 @@ func main() {
 	downloadDir := getenv("YTVAULT_DOWNLOAD_PATH", "./data/downloads")
 	cookiesPath := getenv("YTVAULT_COOKIES_PATH", "./data/cookies.txt")
 
-	app, err := api.NewApp(dataPath, downloadDir, cookiesPath, Version, Commit)
+	// Setting both enables HTTP Basic authentication on every route
+	// except /healthz. Leaving them unset keeps the API open, which is
+	// only safe behind a trusted network or an authenticating proxy.
+	authUser := getenv("YTVAULT_AUTH_USER", "")
+	authPassword := getenv("YTVAULT_AUTH_PASSWORD", "")
+
+	app, err := api.NewApp(api.Config{
+		DataPath:     dataPath,
+		DownloadDir:  downloadDir,
+		CookiesPath:  cookiesPath,
+		Version:      Version,
+		Commit:       Commit,
+		AuthUser:     authUser,
+		AuthPassword: authPassword,
+	})
 	if err != nil {
 		log.Fatalf("init app: %v", err)
+	}
+
+	if authUser != "" && authPassword != "" {
+		log.Printf("HTTP Basic authentication enabled for user %q", authUser)
+	} else if authUser != "" || authPassword != "" {
+		log.Printf("warning: YTVAULT_AUTH_USER and YTVAULT_AUTH_PASSWORD must both be set; " +
+			"authentication is disabled")
 	}
 
 	// Stop scheduler on shutdown.
