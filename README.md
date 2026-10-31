@@ -2,6 +2,13 @@
 
 Self-hosted YouTube archive system. Add channels, playlists, or individual videos — YtVault indexes them, schedules recurring scans, and downloads everything to your own storage.
 
+[![CI](https://github.com/AC13139/ytvault/actions/workflows/ci.yml/badge.svg)](https://github.com/AC13139/ytvault/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/AC13139/ytvault/actions/workflows/codeql.yml/badge.svg)](https://github.com/AC13139/ytvault/actions/workflows/codeql.yml)
+[![Security](https://github.com/AC13139/ytvault/actions/workflows/security.yml/badge.svg)](https://github.com/AC13139/ytvault/actions/workflows/security.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/AC13139/ytvault/badge)](https://api.securityscorecards.dev/projects/github.com/AC13139/ytvault)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Docker](https://img.shields.io/docker/pulls/ac13139/ytvault?logo=docker)](https://hub.docker.com/r/ac13139/ytvault)
+
 ## Screenshots
 
 | Sources | Add New Source |
@@ -367,6 +374,41 @@ internal/
   yt/         YouTube URL normalisation
   ytdlp/      yt-dlp wrapper (index, download, search)
 ```
+
+---
+
+## Security
+
+> ⚠️ **YtVault has no built-in authentication.** Every API endpoint — including
+> destructive ones like creating sources, triggering downloads, and uploading
+> cookies — is open to anyone who can reach the port.
+>
+> **Run it on a trusted network only.** Do not expose port 8080 to the internet.
+> Put it behind an authenticating reverse proxy (Caddy/nginx/Traefik) with TLS,
+> bind it to localhost with `YTVAULT_ADDR=127.0.0.1:8080`, or reach it over a
+> VPN.
+
+Your `cookies.txt` is a **logged-in YouTube session** — treat it as a password.
+
+Full details, the security model, and the reporting process are in
+**[SECURITY.md](SECURITY.md)**.
+
+### Automated security checks
+
+Every push and pull request runs:
+
+| Check | Tool |
+|---|---|
+| Static analysis | [CodeQL](https://github.com/github/codeql) (`security-extended`) |
+| Known vulnerabilities | [`govulncheck`](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck) |
+| Dependency review | [`dependency-review-action`](https://github.com/actions/dependency-review-action) |
+| Formatting / vet / tests | `gofmt`, `go vet`, `go test -race` |
+| Dependency updates | [Dependabot](https://docs.github.com/en/code-security/dependabot) (Actions, Docker, Go) |
+| Secret detection | [Secret scanning](https://docs.github.com/en/code-security/secret-scanning) + push protection |
+| Supply-chain posture | [OpenSSF Scorecard](https://github.com/ossf/scorecard) |
+
+Report vulnerabilities privately via
+[GitHub Security Advisories](https://github.com/AC13139/ytvault/security/advisories/new) — please don't open a public issue.
 
 ---
 

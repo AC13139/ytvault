@@ -15,6 +15,15 @@ docker run -d \
 
 Open **http://localhost:8080** in your browser.
 
+> ⚠️ **Security notice:** YtVault has **no built-in authentication**. Anyone who
+> can reach port 8080 can drive the API and upload cookies. Run it on a trusted
+> network only — bind to localhost, put it behind an authenticating reverse
+> proxy with TLS, or reach it over a VPN. Do not publish the port to the
+> internet.
+>
+> `data/cookies.txt` is a **logged-in YouTube session** — treat it as a
+> password. Details: [SECURITY.md](https://github.com/AC13139/ytvault/blob/main/SECURITY.md)
+
 ## Docker Compose
 
 Create a `docker-compose.yml`:
@@ -120,6 +129,7 @@ Choose theme (YouTube 2026 or Classic), configure download templates, video qual
 
 - **GitHub**: [github.com/AC13139/ytvault](https://github.com/AC13139/ytvault)
 - **Issues**: [github.com/AC13139/ytvault/issues](https://github.com/AC13139/ytvault/issues)
+- **Security policy**: [SECURITY.md](https://github.com/AC13139/ytvault/blob/main/SECURITY.md) — report vulnerabilities privately, not in a public issue
 
 ## License
 
