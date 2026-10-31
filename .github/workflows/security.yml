@@ -36,8 +36,14 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
       - name: Run govulncheck
+        # `shell: bash` (rather than the default) enables `pipefail`. The
+        # output is captured first and the exit code replayed, so the step
+        # summary is written even when the scan fails.
+        shell: bash
         run: |
-          govulncheck ./... | tee govulncheck.txt
+          status=0
+          govulncheck ./... > govulncheck.txt 2>&1 || status=$?
+          cat govulncheck.txt
           {
             echo "## govulncheck"
             echo
@@ -45,6 +51,16 @@ jobs:
             cat govulncheck.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Explain failure
+        if: failure()
+        run: |
+          echo "::error::govulncheck found vulnerabilities in the Go standard library"
+          echo "::error::Fix by moving to a patched Go toolchain (bump go-version in"
+          echo "::error::this workflow and the golang: base image in the Dockerfile),"
+          echo "::error::then re-run. The findings and their fix versions are in the"
+          echo "::error::step summary above."
 
   dependency-review:
     name: Dependency Review
