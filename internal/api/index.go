@@ -1494,11 +1494,37 @@ async function searchYT(){
   }
   data.results.forEach(r=>{
     const dur=r.duration>0?(Math.floor(r.duration/60)+'m'+(r.duration%%60)+'s'):'—';
+    // Build the row with DOM APIs rather than innerHTML: the title and
+    // channel come from YouTube, so they are attacker-controlled. Setting
+    // textContent never parses markup.
     const d=document.createElement('div');
     d.className='media-row';
-    d.innerHTML='<div class="thumb-wrap"><img src="https://img.youtube.com/vi/'+r.id+'/mqdefault.jpg" loading="lazy" onerror="this.style.display=\'none\'"></div>'+
-      '<div class="media-info"><span class="m-title" title="'+r.title.replace(/"/g,'&amp;quot;')+'">'+r.title+'</span><span class="m-sub">'+(r.channel||'—')+' &middot; '+dur+'</span></div>'+
-      '<button class="btn-sm btn-blue" onclick="selectResult(\''+r.url.replace(/'/g,"\\'")+'\')">Select</button>';
+    const thumb=document.createElement('div');
+    thumb.className='thumb-wrap';
+    const img=document.createElement('img');
+    img.src='https://img.youtube.com/vi/'+encodeURIComponent(r.id)+'/mqdefault.jpg';
+    img.loading='lazy';
+    img.alt='';
+    img.addEventListener('error',()=>{img.style.display='none';});
+    thumb.appendChild(img);
+    const info=document.createElement('div');
+    info.className='media-info';
+    const title=document.createElement('span');
+    title.className='m-title';
+    title.textContent=r.title||'';
+    title.title=r.title||'';
+    const sub=document.createElement('span');
+    sub.className='m-sub';
+    sub.textContent=(r.channel||'—')+' · '+dur;
+    info.appendChild(title);
+    info.appendChild(sub);
+    const btn=document.createElement('button');
+    btn.className='btn-sm btn-blue';
+    btn.textContent='Select';
+    btn.addEventListener('click',()=>selectResult(r.url));
+    d.appendChild(thumb);
+    d.appendChild(info);
+    d.appendChild(btn);
     tbody.appendChild(d);
   });
 }
