@@ -39,7 +39,7 @@ Self-hosted YouTube archive system. Add channels, playlists, or individual video
 
 > **Docker is the recommended way to run YtVault.** The image includes all dependencies (yt-dlp, ffmpeg, Node.js, Python) pre-configured and supports `linux/amd64` and `linux/arm64`.
 >
-> **Tip:** For production use, pin a specific version tag (e.g. `ac13139/ytvault:1.1.0`) instead of `:latest`. The `:latest` tag updates on every commit to `main` and may contain unreleased changes.
+> **Tip:** For production use, pin a specific version tag (e.g. `ac13139/ytvault:1.1.0`) instead of `:latest`. The `:latest` tag updates on every commit to `main` and is also rebuilt weekly so base images and `yt-dlp` stay current — it may contain unreleased changes.
 
 ### Docker Compose (recommended)
 
