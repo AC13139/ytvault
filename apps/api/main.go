@@ -11,7 +11,8 @@ import (
 )
 
 // Build-time version metadata. Populated via -ldflags:
-//   go build -ldflags "-X main.Version=1.2.3 -X main.Commit=abc1234"
+//
+//	go build -ldflags "-X main.Version=1.2.3 -X main.Commit=abc1234"
 var (
 	Version = "dev"
 	Commit  = "unknown"

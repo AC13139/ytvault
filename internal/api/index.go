@@ -129,7 +129,10 @@ func buildScheduleCell(sourceID string, kind models.SourceKind, schedBySource ma
 
 // ── Actions cell ──────────────────────────────────────────────────────────────
 
-var retentionOptions = []struct{ v int; l string }{
+var retentionOptions = []struct {
+	v int
+	l string
+}{
 	{0, "Default"},
 	{30, "30 days"},
 	{60, "60 days"},
@@ -329,11 +332,21 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 			mediaCount, doneCount,
 			html.EscapeString(s.ID),
 			urlLine,
-			func() string { if isActive { return " source-progress-active" }; return "" }(), pct,
+			func() string {
+				if isActive {
+					return " source-progress-active"
+				}
+				return ""
+			}(), pct,
 			buildActionsCell(s.ID, s.Kind,
 				func() bool { _, ok := schedBySource[s.ID]; return ok }(),
 				s.RetentionDays,
-				func() string { if sc, ok := schedBySource[s.ID]; ok { return sc.DateAfter }; return "" }(),
+				func() string {
+					if sc, ok := schedBySource[s.ID]; ok {
+						return sc.DateAfter
+					}
+					return ""
+				}(),
 			),
 		))
 	}
@@ -378,7 +391,12 @@ func (a *App) handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 		pinBtn := fmt.Sprintf(
 			`<span style="cursor:pointer;font-size:16px;color:%s" title="%s" onclick="togglePin('%s',this)">%s</span> `,
-			func() string { if m.Pinned { return "#fbbf24" }; return "#4b5563" }(),
+			func() string {
+				if m.Pinned {
+					return "#fbbf24"
+				}
+				return "#4b5563"
+			}(),
 			pinTitle, mid, pinIcon,
 		)
 		action := pinBtn
@@ -2062,16 +2080,16 @@ window.onbeforeunload=function(){sessionStorage.setItem('scrollY',window.scrollY
 	}
 
 	_, _ = w.Write([]byte(fmt.Sprintf(page,
-		len(sources), len(allMedia), len(tasks), len(schedules),         // sidebar counts
-		ckNavBadge,                                                       // cookies badge in sidebar
-		addDateAfterOpts,                                                // add-source date filter options
-		collectionOpts.String(),                                          // collection dropdown options
-		len(sources), strings.Join(sourceRows, ""),                      // sources tab: title, rows
+		len(sources), len(allMedia), len(tasks), len(schedules), // sidebar counts
+		ckNavBadge,                                 // cookies badge in sidebar
+		addDateAfterOpts,                           // add-source date filter options
+		collectionOpts.String(),                    // collection dropdown options
+		len(sources), strings.Join(sourceRows, ""), // sources tab: title, rows
 		len(allMedia), mediaFilterOptions, strings.Join(mediaRows, ""), // media tab
-		len(tasks), strings.Join(taskRows, ""),                         // tasks tab
-		len(schedules), strings.Join(schedRows, ""),                    // schedules tab
-		ckLoginWarning,                                                  // cookies tab: login warning banner
-		ckStatusBadge, ckPathDisplay, ckSize, ckMtime,                  // cookies tab: status, path, size, mtime
-		autoRefreshJS,                                                   // auto-refresh if running tasks
+		len(tasks), strings.Join(taskRows, ""), // tasks tab
+		len(schedules), strings.Join(schedRows, ""), // schedules tab
+		ckLoginWarning,                                // cookies tab: login warning banner
+		ckStatusBadge, ckPathDisplay, ckSize, ckMtime, // cookies tab: status, path, size, mtime
+		autoRefreshJS, // auto-refresh if running tasks
 	)))
 }

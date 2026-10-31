@@ -100,10 +100,10 @@ type probeResult struct {
 	Uploader      string           `json:"uploader"`
 	WebpageURL    string           `json:"webpage_url"`
 	URL           string           `json:"url"`
-	Duration      *float64         `json:"duration"`      // null or number
-	RawUploadDate string           `json:"upload_date"`   // YYYYMMDD or empty
-	Thumbnail     string           `json:"thumbnail"`     // best thumbnail URL
-	Thumbnails    []thumbnailEntry `json:"thumbnails"`    // all available thumbnails
+	Duration      *float64         `json:"duration"`    // null or number
+	RawUploadDate string           `json:"upload_date"` // YYYYMMDD or empty
+	Thumbnail     string           `json:"thumbnail"`   // best thumbnail URL
+	Thumbnails    []thumbnailEntry `json:"thumbnails"`  // all available thumbnails
 	Entries       []probeResult    `json:"entries"`
 }
 

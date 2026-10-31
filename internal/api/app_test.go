@@ -370,7 +370,9 @@ func TestListSourceMediaReturnsEmptyArrayForNewSource(t *testing.T) {
 		t.Fatalf("create status = %d", createW.Code)
 	}
 	var createResp struct {
-		Source struct{ ID string `json:"id"` } `json:"source"`
+		Source struct {
+			ID string `json:"id"`
+		} `json:"source"`
 	}
 	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
 		t.Fatal(err)
@@ -416,7 +418,9 @@ func TestDownloadAllReturnsZeroCountForSourceWithNoMedia(t *testing.T) {
 		t.Fatalf("create status = %d", createW.Code)
 	}
 	var createResp struct {
-		Source struct{ ID string `json:"id"` } `json:"source"`
+		Source struct {
+			ID string `json:"id"`
+		} `json:"source"`
 	}
 	if err := json.Unmarshal(createW.Body.Bytes(), &createResp); err != nil {
 		t.Fatal(err)

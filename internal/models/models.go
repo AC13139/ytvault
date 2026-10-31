@@ -84,12 +84,12 @@ type MediaItem struct {
 	PlaylistIndex int             `json:"playlistIndex,omitempty"` // 1-based index within playlist
 	UploadDate    *time.Time      `json:"uploadDate,omitempty"`    // YouTube upload date (nil = unknown)
 	Pinned        bool            `json:"pinned,omitempty"`        // pinned items are never auto-cleaned
-	Status     MediaItemStatus `json:"status"`
-	FilePath   string          `json:"filePath,omitempty"`
-	FileSize   int64           `json:"fileSize,omitempty"` // bytes
-	ErrorMsg   string          `json:"errorMessage,omitempty"`
-	CreatedAt  time.Time       `json:"createdAt"`
-	UpdatedAt  time.Time       `json:"updatedAt"`
+	Status        MediaItemStatus `json:"status"`
+	FilePath      string          `json:"filePath,omitempty"`
+	FileSize      int64           `json:"fileSize,omitempty"` // bytes
+	ErrorMsg      string          `json:"errorMessage,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
+	UpdatedAt     time.Time       `json:"updatedAt"`
 }
 
 // Schedule defines a recurring re-index (and optional auto-download) for a source.
@@ -97,8 +97,8 @@ type Schedule struct {
 	SourceID      string     `json:"sourceId"`
 	IntervalHours int        `json:"intervalHours"` // 1, 6, 12, 24, 168
 	Enabled       bool       `json:"enabled"`
-	AutoDownload  bool       `json:"autoDownload"`          // if true, new videos are downloaded automatically
-	DateAfter     string     `json:"dateAfter,omitempty"`   // yt-dlp --dateafter value, e.g. "now-30days"
+	AutoDownload  bool       `json:"autoDownload"`        // if true, new videos are downloaded automatically
+	DateAfter     string     `json:"dateAfter,omitempty"` // yt-dlp --dateafter value, e.g. "now-30days"
 	LastRunAt     *time.Time `json:"lastRunAt,omitempty"`
 	NextRunAt     time.Time  `json:"nextRunAt"`
 	CreatedAt     time.Time  `json:"createdAt"`
@@ -107,15 +107,15 @@ type Schedule struct {
 
 // Config stores user-configurable settings with sensible defaults.
 type Config struct {
-	FolderFormat          string `json:"folderFormat,omitempty"`          // folder naming preset key
-	FileFormat            string `json:"fileFormat,omitempty"`            // file naming preset key
+	FolderFormat           string `json:"folderFormat,omitempty"`           // folder naming preset key
+	FileFormat             string `json:"fileFormat,omitempty"`             // file naming preset key
 	PlaylistFolderOverride bool   `json:"playlistFolderOverride,omitempty"` // use playlist name as folder for playlist sources
 	PlaylistFileOverride   bool   `json:"playlistFileOverride,omitempty"`   // use playlist index+title for playlist sources
-	FilenameTemplate      string `json:"filenameTemplate,omitempty"`      // resolved yt-dlp output template
-	PlaylistTemplate      string `json:"playlistTemplate,omitempty"`      // resolved template for playlist sources
-	VideoFormat           string `json:"videoFormat,omitempty"`           // yt-dlp -f value
-	MaxConcurrent         int    `json:"maxConcurrent,omitempty"`         // max parallel downloads
-	DefaultRetentionDays  int    `json:"defaultRetentionDays,omitempty"`  // global default, 0 = keep forever
+	FilenameTemplate       string `json:"filenameTemplate,omitempty"`       // resolved yt-dlp output template
+	PlaylistTemplate       string `json:"playlistTemplate,omitempty"`       // resolved template for playlist sources
+	VideoFormat            string `json:"videoFormat,omitempty"`            // yt-dlp -f value
+	MaxConcurrent          int    `json:"maxConcurrent,omitempty"`          // max parallel downloads
+	DefaultRetentionDays   int    `json:"defaultRetentionDays,omitempty"`   // global default, 0 = keep forever
 }
 
 type State struct {

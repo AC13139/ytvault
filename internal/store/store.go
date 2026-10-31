@@ -1048,19 +1048,19 @@ const DefaultVideoFormat = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+best
 
 // Folder naming presets (yt-dlp output template fragments)
 var FolderPresets = map[string]string{
-	"channel":           "%(uploader,channel,id)s",
-	"date":              "%(upload_date>%Y-%m-%d)s",
-	"channel_year":      "%(uploader,channel,id)s/%(upload_date>%Y)s",
-	"channel_month":     "%(uploader,channel,id)s/%(upload_date>%Y-%m)s",
-	"channel_day":       "%(uploader,channel,id)s/%(upload_date>%Y-%m-%d)s",
-	"playlist":          "%(playlist_title,uploader,channel,id)s",
+	"channel":       "%(uploader,channel,id)s",
+	"date":          "%(upload_date>%Y-%m-%d)s",
+	"channel_year":  "%(uploader,channel,id)s/%(upload_date>%Y)s",
+	"channel_month": "%(uploader,channel,id)s/%(upload_date>%Y-%m)s",
+	"channel_day":   "%(uploader,channel,id)s/%(upload_date>%Y-%m-%d)s",
+	"playlist":      "%(playlist_title,uploader,channel,id)s",
 }
 
 // File naming presets
 var FilePresets = map[string]string{
-	"date_title":     "%(upload_date>%Y-%m-%d)s %(title)s [%(id)s].%(ext)s",
-	"title":          "%(title)s [%(id)s].%(ext)s",
-	"index_title":    "%(playlist_index)03d %(title)s [%(id)s].%(ext)s",
+	"date_title":  "%(upload_date>%Y-%m-%d)s %(title)s [%(id)s].%(ext)s",
+	"title":       "%(title)s [%(id)s].%(ext)s",
+	"index_title": "%(playlist_index)03d %(title)s [%(id)s].%(ext)s",
 }
 
 // Playlist override presets — when source is a playlist, these can override the main config
