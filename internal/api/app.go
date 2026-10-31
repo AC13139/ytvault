@@ -113,7 +113,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v1/cookies", a.handleCookiesDelete)
 	mux.HandleFunc("POST /api/v1/cookies/validate", a.handleCookiesValidate)
 	mux.HandleFunc("GET /", a.handleIndex)
-	return withJSONLogging(mux)
+	return withSecurityHeaders(withJSONLogging(mux))
 }
 
 // ── Source handlers ───────────────────────────────────────────────────────────
