@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"ytvault/internal/yt"
 )
 
 // cookiesPath returns the cookies file path from YTVAULT_COOKIES_PATH if set
@@ -168,7 +170,16 @@ func (p probeResult) duration() int {
 // or "YYYYMMDD"). Pass an empty string to index all available videos.
 //
 // Returns the channel/playlist title, best poster URL, and the list of videos found.
+// FlatIndexLimit caps how many videos a single flat index pass enumerates.
+const FlatIndexLimit = 500
+
 func Index(url, dateAfter string) (string, string, []VideoInfo, error) {
+	// Defense in depth: the URL is handed to yt-dlp as a positional
+	// argument, so it must be a YouTube URL and must not be read as an
+	// option (yt-dlp accepts --config-location and --plugin-dirs there).
+	if err := yt.ValidateYouTubeURL(url); err != nil {
+		return "", "", nil, fmt.Errorf("invalid source url: %w", err)
+	}
 	// For channel URLs, target the /videos tab to avoid Shorts/Live
 	indexURL := url
 	if strings.Contains(url, "/@") || strings.Contains(url, "/channel/") || strings.Contains(url, "/c/") || strings.Contains(url, "/user/") {
@@ -192,8 +203,17 @@ func Index(url, dateAfter string) (string, string, []VideoInfo, error) {
 
 // indexFlat uses --flat-playlist -J (fast, no upload_date).
 func indexFlat(url string) (string, string, []VideoInfo, error) {
-	args := append(indexArgs(), "--flat-playlist", "-J", "--no-warnings", url)
-	cmd := exec.Command("yt-dlp", args...)
+	args := append(indexArgs(),
+		"--flat-playlist", "-J", "--no-warnings",
+		// Bound the enumeration. YouTube lists newest first and the
+		// scheduler re-indexes regularly, so anything older than this
+		// window was already picked up by an earlier run.
+		"--playlist-items", fmt.Sprintf("1:%d", FlatIndexLimit),
+		url,
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -387,6 +407,9 @@ func indexFlatWithLimit(url, dateAfter string) (string, string, []VideoInfo, err
 // FetchPosterURL fetches only the poster/avatar URL for a source without
 // indexing all videos. Much faster than Index() for poster-only fetches.
 func FetchPosterURL(url string) (string, error) {
+	if err := yt.ValidateYouTubeURL(url); err != nil {
+		return "", fmt.Errorf("invalid source url: %w", err)
+	}
 	// For channels, target the /videos tab to get channel-level metadata
 	if strings.Contains(url, "/@") || strings.Contains(url, "/channel/") || strings.Contains(url, "/c/") || strings.Contains(url, "/user/") {
 		url = strings.TrimRight(url, "/") + "/videos"
@@ -488,6 +511,11 @@ func indexWithDateFilter(url, dateAfter string) (string, string, []VideoInfo, er
 // likely to trigger captcha), then with player_client=web as fallback for
 // age-restricted videos or captcha failures.
 func Download(ctx context.Context, videoURL, outputDir, filenameTemplate, videoFormat string) (string, error) {
+	// The URL is a positional argument to yt-dlp. A value starting with
+	// "-" would be parsed as an option instead of a URL.
+	if strings.HasPrefix(strings.TrimSpace(videoURL), "-") {
+		return "", fmt.Errorf("invalid video url")
+	}
 	if filenameTemplate == "" {
 		filenameTemplate = "%(uploader,channel,id)s/%(title)s [%(id)s].%(ext)s"
 	}

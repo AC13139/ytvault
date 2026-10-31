@@ -27,6 +27,43 @@ func ValidateSource(raw string, kind models.SourceKind) error {
 	return err
 }
 
+// youtubeHosts are the hosts YtVault will hand to yt-dlp.
+var youtubeHosts = map[string]bool{
+	"youtube.com":     true,
+	"www.youtube.com": true,
+	"youtu.be":        true,
+	"m.youtube.com":   true,
+}
+
+// ValidateYouTubeURL checks that raw is an http(s) URL on a YouTube host.
+//
+// It applies no per-kind rules, so it suits endpoints that probe a URL
+// without knowing whether it is a video, playlist, or channel. It exists
+// mostly to keep a caller-supplied string from being interpreted as a
+// yt-dlp command-line option: a value beginning with "-" is an option to
+// yt-dlp, not a URL, and yt-dlp accepts options such as
+// --config-location or --plugin-dirs in that position.
+func ValidateYouTubeURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("url is required")
+	}
+	if strings.HasPrefix(raw, "-") {
+		return fmt.Errorf("url must not start with '-'")
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("url must start with http or https")
+	}
+	if !youtubeHosts[strings.ToLower(u.Hostname())] {
+		return fmt.Errorf("only YouTube URLs are supported")
+	}
+	return nil
+}
+
 func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) {
 	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)
@@ -37,7 +74,7 @@ func NormalizeSource(raw string, kind models.SourceKind) (SourceProfile, error) 
 		return SourceProfile{}, fmt.Errorf("url must start with http or https")
 	}
 	host := strings.ToLower(u.Hostname())
-	if host != "youtube.com" && host != "www.youtube.com" && host != "youtu.be" && host != "m.youtube.com" {
+	if !youtubeHosts[host] {
 		return SourceProfile{}, fmt.Errorf("only YouTube URLs are supported in phase 1")
 	}
 

@@ -85,3 +85,39 @@ func TestNormalizeSource_ChannelVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateYouTubeURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		url     string
+		wantErr bool
+	}{
+		{"watch ok", "https://www.youtube.com/watch?v=abc123", false},
+		{"short ok", "https://youtu.be/abc123", false},
+		{"mobile ok", "https://m.youtube.com/watch?v=abc123", false},
+		{"playlist ok", "https://www.youtube.com/playlist?list=PL123", false},
+		{"empty", "", true},
+		{"whitespace", "   ", true},
+		// A leading dash makes yt-dlp read the value as an option rather
+		// than a URL, which is how --config-location and --plugin-dirs
+		// could be injected.
+		{"option injection", "--config-location=/etc/passwd", true},
+		{"option injection short", "--exec=rm", true},
+		{"non-youtube", "https://vimeo.com/1", true},
+		{"internal address", "http://169.254.169.254/latest/meta-data/", true},
+		{"loopback", "http://127.0.0.1:8080/", true},
+		{"file scheme", "file:///etc/passwd", true},
+		{"javascript scheme", "javascript:alert(1)", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateYouTubeURL(tc.url)
+			if tc.wantErr && err == nil {
+				t.Fatalf("ValidateYouTubeURL(%q) = nil, want an error", tc.url)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("ValidateYouTubeURL(%q) = %v, want nil", tc.url, err)
+			}
+		})
+	}
+}

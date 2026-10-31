@@ -259,6 +259,10 @@ func (w *Worker) runDownload(ctx context.Context, task models.Task) error {
 	if src, ok := w.store.GetSource(item.SourceID); ok {
 		// Sanitize title for path safety (critical for user-named collections)
 		title := store.SanitizeCollectionName(src.Title)
+		// A literal % in the name would be read as a yt-dlp output field
+		// and expanded into the path. %% is yt-dlp's escape for a
+		// literal percent sign.
+		title = strings.ReplaceAll(title, "%", "%%")
 		tmpl = strings.Replace(tmpl, "%(playlist_title,uploader,channel,id)s", title, 1)
 	}
 	if item.PlaylistIndex > 0 {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ytvault/internal/models"
+	"ytvault/internal/netguard"
 	"ytvault/internal/scheduler"
 	"ytvault/internal/store"
 	"ytvault/internal/worker"
@@ -554,6 +555,12 @@ func (a *App) handleYouTubeProbe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing_url", "url parameter required")
 		return
 	}
+	// The URL is handed to yt-dlp as a positional argument, so it must be a
+	// YouTube URL and must not be mistaken for a yt-dlp option.
+	if err := yt.ValidateYouTubeURL(url); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_url", err.Error())
+		return
+	}
 	dateAfter := r.URL.Query().Get("dateAfter")
 	title, _, videos, err := ytdlp.Index(url, dateAfter)
 	resp := map[string]any{
@@ -802,12 +809,13 @@ func (a *App) handleSetPoster(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid", "url must be https")
 		return
 	}
-	// SSRF protection: reject private/loopback/metadata URLs
-	for _, blocked := range []string{"localhost", "127.", "10.", "172.16.", "192.168.", "169.254.", "[::1]", "metadata"} {
-		if strings.Contains(strings.ToLower(req.URL), blocked) {
-			writeError(w, http.StatusBadRequest, "invalid", "URL points to a private/internal address")
-			return
-		}
+	// SSRF protection: the URL must resolve only to public addresses. The
+	// client re-checks every resolved address at connect time and
+	// re-validates each redirect hop, so neither a DNS answer that changes
+	// mid-request nor a redirect to an internal host gets through.
+	if err := netguard.ValidateURL(req.URL); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid", "URL is not fetchable: "+err.Error())
+		return
 	}
 	posterDir := filepath.Join(a.downloadDir, ".posters")
 	if err := os.MkdirAll(posterDir, 0o755); err != nil {
@@ -817,15 +825,7 @@ func (a *App) handleSetPoster(w http.ResponseWriter, r *http.Request) {
 	posterPath := filepath.Join(posterDir, src.ID+".jpg")
 	tmp := posterPath + ".tmp"
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return fmt.Errorf("too many redirects")
-			}
-			return nil
-		},
-	}
+	client := netguard.Client(10*time.Second, 3)
 	resp, err := client.Get(req.URL)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "fetch_failed", err.Error())
